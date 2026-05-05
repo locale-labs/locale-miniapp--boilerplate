@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>{{MINIAPP_NAME}}</title>
+  </head>
+  <body class="bg-gray-50 text-gray-900">
+    <main x-data="miniApp()" x-init="init()" class="mx-auto max-w-2xl p-4">
+      <!-- Loading -->
+      <template x-if="!isReady">
+        <p class="text-gray-500">Cargando…</p>
+      </template>
+
+      <template x-if="isReady">
+        <div class="space-y-6">
+          <!-- Header -->
+          <header class="border-b pb-4">
+            <h1 class="text-2xl font-bold">{{MINIAPP_NAME}}</h1>
+            <p class="text-sm text-gray-600">
+              <span x-text="user ? user.email : 'Invitado'"></span>
+              <span x-show="location"> · <span x-text="location?.city"></span></span>
+            </p>
+          </header>
+
+          <!-- Toast -->
+          <div
+            x-show="toast.show"
+            x-transition
+            :class="{
+              'bg-green-100 text-green-800': toast.type === 'success',
+              'bg-red-100 text-red-800': toast.type === 'error',
+              'bg-yellow-100 text-yellow-800': toast.type === 'warning',
+              'bg-blue-100 text-blue-800': toast.type === 'info',
+            }"
+            class="rounded p-3 text-sm"
+            x-text="toast.message"
+          ></div>
+
+          <!-- Create item -->
+          <section class="rounded-lg border bg-white p-4">
+            <h2 class="mb-2 font-semibold">Crear ítem</h2>
+            <form
+              @submit.prevent="
+                if (!user || user.id === 'guest') { requireLogin(); return; }
+                items.submit(token, user.id, user.place_id)
+                  .then(() => showToast('Ítem creado', 'success'))
+                  .catch(() => showToast('Error al crear', 'error'))
+              "
+              class="flex gap-2"
+            >
+              <input
+                x-model="items.draft"
+                type="text"
+                placeholder="¿Qué querés compartir?"
+                class="flex-1 rounded border px-3 py-2"
+              />
+              <button
+                type="submit"
+                class="rounded bg-blue-600 px-4 py-2 text-white hover:bg-blue-700"
+              >
+                Crear
+              </button>
+            </form>
+          </section>
+
+          <!-- Items list -->
+          <section>
+            <h2 class="mb-2 font-semibold">Ítems en tu zona</h2>
+            <template x-if="items.isLoading">
+              <p class="text-gray-500">Cargando ítems…</p>
+            </template>
+            <template x-if="!items.isLoading && items.list.length === 0">
+              <p class="text-gray-500">Todavía no hay ítems. ¡Sé el primero!</p>
+            </template>
+            <ul class="space-y-2">
+              <template x-for="item in items.list" :key="item.id">
+                <li class="flex items-center justify-between rounded border bg-white p-3">
+                  <span x-text="item.content"></span>
+                  <button
+                    x-show="user && item.owner_id === user.id"
+                    @click="items.remove(token, item.id)
+                      .then(() => showToast('Eliminado', 'success'))
+                      .catch(() => showToast('Error al eliminar', 'error'))"
+                    class="text-sm text-red-600 hover:underline"
+                  >
+                    Eliminar
+                  </button>
+                </li>
+              </template>
+            </ul>
+          </section>
+
+          <!-- Footer -->
+          <footer class="border-t pt-4 text-xs text-gray-500">
+            <span x-text="`v${version}`"></span>
+          </footer>
+        </div>
+      </template>
+    </main>
+  </body>
+</html>

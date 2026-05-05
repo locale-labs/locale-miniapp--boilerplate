@@ -1,0 +1,12 @@
+node_modules/
+build/
+.DS_Store
+.env
+.env.dev
+.env.prod
+!.env.example
+!.env.dev.example
+!.env.prod.example
+
+# Temporary/generated files (HTML, CSS, JS builds)
+.temp/

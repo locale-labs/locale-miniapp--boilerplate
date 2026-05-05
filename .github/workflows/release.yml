@@ -1,0 +1,79 @@
+name: Release
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: write
+  issues: write
+  pull-requests: write
+
+jobs:
+  release:
+    name: Release
+    runs-on: ubuntu-latest
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+      HUSKY: "0"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22.x"
+
+      - uses: oven-sh/setup-bun@v2
+
+      - uses: supabase/setup-cli@v1
+        with:
+          version: 2.58.5
+
+      - run: bun install
+
+      - name: Capture HEAD before release
+        id: before
+        run: echo "sha=$(git rev-parse HEAD)" >> $GITHUB_OUTPUT
+
+      - name: Semantic Release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: npx semantic-release
+
+      - name: Detect new release
+        id: check
+        run: |
+          AFTER=$(git rev-parse HEAD)
+          if [ "${{ steps.before.outputs.sha }}" != "$AFTER" ]; then
+            echo "released=true" >> $GITHUB_OUTPUT
+            echo "sha=$AFTER" >> $GITHUB_OUTPUT
+          else
+            echo "released=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Create .env.prod
+        if: steps.check.outputs.released == 'true'
+        run: |
+          cat <<EOF > .env.prod
+          MINIAPP_SUPABASE_URL=${{ secrets.PROD_MINIAPP_SUPABASE_URL }}
+          MINIAPP_SUPABASE_ANON_PUBLIC=${{ secrets.PROD_MINIAPP_SUPABASE_ANON_PUBLIC }}
+          MINIAPP_SUPABASE_PROJECT_ID=${{ secrets.PROD_MINIAPP_SUPABASE_PROJECT_ID }}
+          MINIAPP_DEPLOY_SECRET=${{ secrets.PROD_MINIAPP_DEPLOY_SECRET }}
+          MINIAPP_API_KEY=${{ secrets.PROD_MINIAPP_API_KEY }}
+          MINIAPP_SUPABASE_ACCESS_TOKEN=${{ secrets.PROD_MINIAPP_SUPABASE_ACCESS_TOKEN }}
+          CORE_DEV_SUPABASE_URL=${{ secrets.CORE_DEV_SUPABASE_URL }}
+          CORE_DEV_SUPABASE_ANON_PUBLIC=${{ secrets.CORE_DEV_SUPABASE_ANON_PUBLIC }}
+          CORE_PROD_SUPABASE_URL=${{ secrets.CORE_PROD_SUPABASE_URL }}
+          CORE_PROD_SUPABASE_ANON_PUBLIC=${{ secrets.CORE_PROD_SUPABASE_ANON_PUBLIC }}
+          MINIAPP_SLUG=${{ secrets.MINIAPP_SLUG }}
+          MINIAPP_NAME=${{ secrets.MINIAPP_NAME }}
+          EOF
+
+      - name: Deploy (prod)
+        if: steps.check.outputs.released == 'true'
+        env:
+          MINIAPP_GIT_SHA: ${{ steps.check.outputs.sha }}
+        run: make deploy-prod

@@ -1,0 +1,47 @@
+{
+  "name": "{{MINIAPP_PACKAGE_NAME}}",
+  "version": "0.1.0",
+  "description": "{{MINIAPP_DESCRIPTION}}",
+  "miniApp": {
+    "id": "{{MINIAPP_ID}}",
+    "name": "{{MINIAPP_NAME}}"
+  },
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "locale-miniapp-builder build",
+    "deploy": "locale-miniapp-builder deploy",
+    "dev": "locale-miniapp-builder dev",
+    "dev:local": "LOCALE_SDK_PATH=../locale-miniapp-sdk/dist/sdk.js bun run dev",
+    "lint": "eslint src",
+    "format": "prettier --write \"src/**/*.{ts,tsx,js,jsx,css,html}\"",
+    "prepare": "husky",
+    "security-check": "bunx @socketsecurity/cli ci"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.0.0",
+    "@locale-labs/miniapp-builder": "0.1.7-dev.1.4f3a509",
+    "@locale-labs/miniapp-sdk": "0.2.0-dev.2.095bf24",
+    "@semantic-release/changelog": "6.0.3",
+    "@semantic-release/git": "10.0.1",
+    "@semantic-release/npm": "13.1.5",
+    "@supabase/supabase-js": "^2.86.2",
+    "autoprefixer": "^10.4.19",
+    "esbuild": "^0.27.0",
+    "eslint": "^9.0.0",
+    "eslint-config-prettier": "^9.1.0",
+    "globals": "^15.0.0",
+    "husky": "^9.1.7",
+    "postcss": "^8.4.38",
+    "prettier": "^3.2.5",
+    "semantic-release": "25.0.2",
+    "tailwindcss": "^3.4.3",
+    "typescript": "^5.4.5",
+    "typescript-eslint": "^8.0.0"
+  },
+  "dependencies": {
+    "alpinejs": "^3.15.2",
+    "chokidar": "^5.0.0",
+    "concurrently": "^9.2.1"
+  }
+}

@@ -1,0 +1,54 @@
+name: Deploy {{MINIAPP_ID}} (dev)
+
+on:
+  push:
+    branches:
+      - dev
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    name: Deploy to dev
+    runs-on: ubuntu-latest
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+      HUSKY: "0"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22.x"
+
+      - uses: oven-sh/setup-bun@v2
+
+      - uses: supabase/setup-cli@v1
+        with:
+          version: 2.58.5
+
+      - run: bun install
+
+      - name: Create .env.dev
+        run: |
+          cat <<EOF > .env.dev
+          MINIAPP_SUPABASE_URL=${{ secrets.DEV_MINIAPP_SUPABASE_URL }}
+          MINIAPP_SUPABASE_ANON_PUBLIC=${{ secrets.DEV_MINIAPP_SUPABASE_ANON_PUBLIC }}
+          MINIAPP_SUPABASE_PROJECT_ID=${{ secrets.DEV_MINIAPP_SUPABASE_PROJECT_ID }}
+          MINIAPP_DEPLOY_SECRET=${{ secrets.DEV_MINIAPP_DEPLOY_SECRET }}
+          MINIAPP_API_KEY=${{ secrets.DEV_MINIAPP_API_KEY }}
+          MINIAPP_SUPABASE_ACCESS_TOKEN=${{ secrets.DEV_MINIAPP_SUPABASE_ACCESS_TOKEN }}
+          CORE_DEV_SUPABASE_URL=${{ secrets.CORE_DEV_SUPABASE_URL }}
+          CORE_DEV_SUPABASE_ANON_PUBLIC=${{ secrets.CORE_DEV_SUPABASE_ANON_PUBLIC }}
+          CORE_PROD_SUPABASE_URL=${{ secrets.CORE_PROD_SUPABASE_URL }}
+          CORE_PROD_SUPABASE_ANON_PUBLIC=${{ secrets.CORE_PROD_SUPABASE_ANON_PUBLIC }}
+          MINIAPP_SLUG=${{ secrets.MINIAPP_SLUG }}
+          MINIAPP_NAME=${{ secrets.MINIAPP_NAME }}
+          EOF
+
+      - name: Deploy (dev)
+        env:
+          MINIAPP_GIT_SHA: ${{ github.sha }}
+        run: make deploy-dev

@@ -1,0 +1,4 @@
+[install]
+disable-scripts = true
+save-exact = true
+lockfile = true
