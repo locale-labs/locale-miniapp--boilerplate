@@ -10,3 +10,4 @@ build/
 
 # Temporary/generated files (HTML, CSS, JS builds)
 .temp/
+.keys/

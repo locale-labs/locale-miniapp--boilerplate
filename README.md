@@ -5,6 +5,8 @@ Template para crear nuevas mini-apps de Locale. **No clones esto directo: usá "
 
 ## Cómo usar este template
 
+> 👋 **¿Es tu primera mini-app de Locale?** Leé [`FIRST_STEPS.md`](./FIRST_STEPS.md) — guía paso a paso amigable, desde clonar hasta tener la app deployada en prod.
+
 1. En GitHub: clickeá **"Use this template" → Create a new repository**. Nombre sugerido: `locale-miniapp--<id>` (ej. `locale-miniapp--eventos`).
 2. Cloná el repo nuevo y entrá a la carpeta:
    ```bash
@@ -101,6 +103,8 @@ GitHub Actions deploya automático: push a `dev` → dev, merge a `main` → sem
 | `MINIAPP_NAME` | nombre visible del miniapp |
 
 ## Setup desde cero
+
+> 👋 Si es tu primera mini-app, seguí [`FIRST_STEPS.md`](./FIRST_STEPS.md) en lugar de esta lista resumida.
 
 1. **Crear proyecto Supabase** dedicado para esta mini-app (dashboard de Supabase, org de Locale).
 2. **Copiar credenciales** a `.env.dev` (URL, anon, project_id, access_token).

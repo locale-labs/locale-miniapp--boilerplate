@@ -38,7 +38,7 @@ git merge main && git push  # trae el chore(release): X.Y.Z y redeploya dev
 
 ## Verificar la versión deployada
 
-En `dev.locale.com.ar/{{MINIAPP_ID}}?mini-app-dev-mode=true` o `locale.com.ar/{{MINIAPP_ID}}`, abrir el modal de info muestra:
+En `locale.com.ar/{{MINIAPP_ID}}?mini-app-dev-mode=true` o `locale.com.ar/{{MINIAPP_ID}}`, abrir el modal de info muestra:
 
 ```
 Versión de la mini-app actual: 0.1.0 · a1b2c3d

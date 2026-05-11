@@ -42,7 +42,7 @@ prompt MINIAPP_ID          "Mini-app id (slug corto, ej: eventos)" "$DEFAULT_ID"
 prompt MINIAPP_NAME        "Nombre visible (ej: Eventos del barrio)" "$MINIAPP_ID"
 prompt MINIAPP_DESCRIPTION "Descripción corta" "Mini-app de Localé"
 prompt MINIAPP_SLUG        "Slug del repo (carpeta y project_id Supabase)" "$DEFAULT_SLUG"
-prompt MINIAPP_PACKAGE_NAME "Nombre npm del paquete" "$DEFAULT_PACKAGE"
+prompt MINIAPP_PACKAGE_NAME "Nombre para el package.json" "$DEFAULT_PACKAGE"
 
 # Derivado: ID en upper-snake (ej. "lost-pets" → "LOST_PETS"), usado en env vars del core
 MINIAPP_ID_UPPER="$(printf '%s' "$MINIAPP_ID" | tr '[:lower:]-' '[:upper:]_')"
