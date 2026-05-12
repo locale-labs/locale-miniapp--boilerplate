@@ -11,13 +11,11 @@ Necesitás tener instalado y configurado:
 - [ ] [**Bun**](https://bun.sh/) (`curl -fsSL https://bun.sh/install | bash`)
 - [ ] [**GitHub CLI** (`gh`)](https://cli.github.com/) y haber corrido `gh auth login`
 - [ ] [**Supabase CLI**](https://supabase.com/docs/guides/local-development/cli/getting-started) (`brew install supabase/tap/supabase` o `bunx supabase --help`)
-- [ ] [**OpenSSL**](https://www.openssl.org/) (viene preinstalado en macOS y Linux)
-
 Y necesitás acceso a:
 
 - [ ] La **org `locale-labs` en GitHub** (para crear el repo desde el template).
 - [ ] La **org de Locale en Supabase** (para crear los proyectos de DB).
-- [ ] Alguien con permisos en `locale-core` (para registrar tu mini-app y agregar secrets en Fly.io). Si sos vos, perfecto.
+- [ ] El repo `locale-core` (para registrar tu mini-app con el script). Por ahora solo el equipo core registra mini-apps.
 
 > 💡 Si te falta cualquiera de estos accesos, pedíselo a quien administra Locale **antes** de empezar — varios pasos van a quedar bloqueados sin ellos.
 
@@ -126,39 +124,31 @@ Esto crea la tabla `items` con RLS. Verificalo en el dashboard de Supabase → *
 
 ---
 
-## Paso 6 — Auth: keypair ES256 + registro en core
+## Paso 6 — Auth: registro en core + JWKS
 
-**Este es el paso más manual y delicado.** El kernel firma JWTs con una clave privada ES256 propia de cada mini-app, y el Supabase del miniapp valida la firma contra la pública.
+El kernel firma JWTs con una clave privada ES256 propia de cada mini-app, y el Supabase del miniapp valida la firma contra la pública.
 
-### 6.1 Generar la keypair
+**Quién hace esto:** quien tenga acceso al repo de `locale-core` (por ahora, el equipo core).
+
+Desde la raíz de `locale-core`, corré el script de registro:
 
 ```bash
-mkdir -p .keys && cd .keys
-openssl ecparam -name prime256v1 -genkey -noout -out private.pem
-openssl ec -in private.pem -pubout -out public.pem
-cd ..
+bun run scripts/register-miniapp.ts --slug <id> --name "<nombre>"
 ```
 
-> 🔐 `.keys/` La privada va al core; la pública va al Supabase.
+El script genera los keypairs ES256 (dev + prod), inserta la fila en el Supabase DEV del core, e imprime exactamente los comandos a ejecutar. Seguí los pasos que imprime en orden:
 
-### 6.2 Mandar la public key al admin de `locale-core` --- ❗❗❗ CONTINUE FROM HERE
-
-Compartí `.keys/public.pem` con quien administra el core. Tiene que:
-
-- Agregar tu mini-app al registry del core (`id="<eventos>"`, name, etc).
-- Subir la **private key** como secret de Fly.io: `fly secrets set EVENTOS_ES256_ENV_PRIVATE_KEY="$(cat .keys/private.pem)"` (con tu ID en upper-snake).
-- Reiniciar el deploy del core.
-
-### 6.3 Configurar JWKS en tu Supabase
-
-En el Dashboard del Supabase del miniapp:
-
-1. **Settings → Auth → JWT Keys → Custom signing keys** (o equivalente según versión).
-2. Apuntar al **endpoint público** que expone el core con tu public key (formato JWK). El admin del core te debe dar la URL — algo como `https://core.locale.com.ar/.well-known/jwks/<id>.json`.
+1. **Setear secrets en Fly.io** (comandos `fly secrets set ...` con las private keys)
+2. **Redeploy del core** (`fly deploy`)
+3. **Insertar fila en Supabase PROD** (SQL que imprime el script — correrlo en el SQL Editor del Supabase prod del core)
+4. **Configurar JWKS en el Supabase de tu mini-app:**
+   - Settings → Auth → JWT Keys → Custom signing key (JWKS URL)
+   - Dev Supabase: `https://dev.locale.com.ar/.well-known/jwks/<id>.json`
+   - Prod Supabase: `https://core.locale.com.ar/.well-known/jwks/<id>.json`
 
 A partir de acá, cuando un usuario haga una request al Supabase del miniapp con el JWT del kernel, Supabase valida la firma contra la pública y resuelve `auth.uid() = sub` correctamente — habilitando RLS.
 
-> 💡 Si más adelante ves errores `401 Unauthorized` al crear ítems, **siempre** verificá esto antes de tocar el código.
+> 💡 Si más adelante ves errores `401 Unauthorized` al crear ítems, **siempre** verificá el JWKS antes de tocar el código.
 
 ---
 
@@ -252,9 +242,9 @@ Deberías ver:
 
 1. **Repetí Paso 3** creando un segundo proyecto Supabase (`locale-miniapp--<id>` con sufijo `-prod` si querés diferenciarlo).
 2. Aplicá las migrations al proyecto prod (Paso 5 con el nuevo project_ref).
-3. Repetí Paso 6.3 (configurar JWKS en el Supabase de prod).
+3. Configurá el JWKS en el Supabase de prod (Paso 6, punto 4 — URL prod).
 4. Cargá los secrets `PROD_MINIAPP_*` en GitHub (Paso 8).
-5. Pedile al admin del core que también registre tu mini-app en el **core de prod**.
+5. Verificá que el admin del core haya corrido el SQL de insert en Supabase PROD (se lo imprime el script del Paso 6).
 6. Mergeá `dev → main` con un PR (NO uses squash — semantic-release necesita los commits originales):
    ```bash
    gh pr create --base main --head dev --title "release: initial deploy"
@@ -271,7 +261,7 @@ Deberías ver:
 |---|---|
 | Veo "Cargando…" para siempre | El SDK no se inyectó / el HTML no llegó al kernel. Ver Network tab y consola. |
 | "Invitado" en lugar de mi email | El kernel no devolvió un user válido. Probaste sin `?mini-app-dev-mode=true`? |
-| `401 Unauthorized` al crear ítem | El JWT no está pasando RLS. Verificá Paso 6.3 (JWKS). |
+| `401 Unauthorized` al crear ítem | El JWT no está pasando RLS. Verificá el JWKS (Paso 6, punto 4). |
 | `404` cuando abro `/locale.com.ar/<id>` | El core no registró tu mini-app. Verificá con el admin. |
 | El modal del kernel no muestra la versión | El edge function `deploy_miniapp` falló. Mirá `bunx supabase functions logs deploy_miniapp`. |
 | `bun run build` falla con "SDK no encontrado" | `bun install` no terminó OK. Borrá `node_modules` y reinstalá. |
