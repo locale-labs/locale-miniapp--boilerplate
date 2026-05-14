@@ -19,22 +19,15 @@ Template para crear nuevas mini-apps de Locale. **No clones esto directo: usá "
    ```
    Te va a pedir id, nombre, descripción, slug y package name. Reemplaza placeholders en todos los archivos y se elimina solo.
 4. `bun install`.
-5. Seguí la sección **"Setup desde cero"** del README generado.
+5. Seguí [`FIRST_STEPS.md`](./FIRST_STEPS.md) para terminar el setup.
 
 ## Qué trae este boilerplate
 
-- `src/` — Alpine.js + Tailwind, integración con `@locale-labs/miniapp-sdk`, una vista "home" con feature ejemplo `items` (CRUD básico contra la tabla del mismo nombre).
-- `supabase/` — `config.toml`, edge function `deploy_miniapp` (registra versión en core), `_shared/` con CORS y helpers, migration `0001_init.sql` con tabla `items` + RLS.
+- `src/` — Alpine.js + Tailwind, integración con `@locale-labs/miniapp-sdk`, feature ejemplo `items` (CRUD básico).
+- `supabase/` — `config.toml`, edge function `deploy_miniapp`, `_shared/` con CORS y helpers, migration `0001_init.sql` con tabla `items` + RLS.
 - `.github/workflows/` — `deploy-dev.yml`, `deploy-prod.yml`, `release.yml` (semantic-release).
 - `init-config/DEV_GATE.md` — patrón opcional de password gate para el proyecto Supabase de dev.
 - `Makefile`, `tsconfig.json`, `tailwind`, `eslint`, `prettier`, `.releaserc.json`, husky hooks, etc.
-
-## Qué NO trae (lo agregás vos)
-
-- Migraciones de tu dominio (en `supabase/migrations/`).
-- Edge functions específicas (`supabase/functions/<tu-funcion>/`).
-- Vistas y features adicionales (en `src/features/` y `src/html/`).
-- Keypair ES256 + registro en `locale-core` (paso manual, ver DEPLOY.md).
 
 <!-- TEMPLATE_INIT_END -->
 
@@ -42,12 +35,15 @@ Template para crear nuevas mini-apps de Locale. **No clones esto directo: usá "
 
 {{MINIAPP_DESCRIPTION}}
 
+> **Agente / contexto técnico:** [`NOTES/LEARNINGS.md`](./NOTES/LEARNINGS.md) — boundaries, gotchas, conexiones con otros repos, release flow.
+> **Setup paso a paso para humanos:** [`FIRST_STEPS.md`](./FIRST_STEPS.md).
+
 ## Stack
 
 - **UI:** Alpine.js + Tailwind
 - **Bridge:** [`@locale-labs/miniapp-sdk`](https://www.npmjs.com/package/@locale-labs/miniapp-sdk)
 - **Backend:** Supabase (Postgres + Edge Functions)
-- **Build:** [`@locale-labs/miniapp-builder`](https://www.npmjs.com/package/@locale-labs/miniapp-builder) (esbuild + tailwind + inyección del SDK)
+- **Build:** [`@locale-labs/miniapp-builder`](https://www.npmjs.com/package/@locale-labs/miniapp-builder)
 
 ## Estructura
 
@@ -113,7 +109,7 @@ GitHub Actions deploya automático: push a `dev` → dev, merge a `main` → sem
    bunx supabase link --project-ref $MINIAPP_SUPABASE_PROJECT_ID
    bunx supabase db push
    ```
-4. **(Opcional) Aplicar [`init-config/DEV_GATE.md`](./init-config/DEV_GATE.md)** si querés password gate para dev.
+4. **(Opcional) Aplicar [`NOTES/init-config/DEV_GATE.md`](./NOTES/init-config/DEV_GATE.md)** si querés password gate para dev.
 5. **Generar keypair ES256** y registrar el miniapp en `locale-core` (ver DEPLOY.md sección "Auth setup").
 6. **Configurar JWKS** en el Supabase del miniapp para validar tokens del core.
 7. **Cargar secrets en GitHub Actions** (ver tabla arriba).
