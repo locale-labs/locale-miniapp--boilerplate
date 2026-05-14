@@ -81,11 +81,15 @@ git commit -m "chore: init from template"
 cp .env.dev.example .env.dev
 ```
 
-En el siguiente paso vamos a generar los valores que tenes que copiar y pegar en este archivo
+El archivo tiene 6 vars. 3 se completan en el Paso 4 (vienen del dashboard de Supabase). Las otras 3 las generás ahora:
+
+| Var | Cómo se obtiene |
+|---|---|
+| `MINIAPP_DEPLOY_SECRET` | `openssl rand -hex 32` |
+| `MINIAPP_API_KEY` | `openssl rand -hex 32`. Después compartíselo al admin del core para que lo agregue como secret del edge function `deploy_miniapp` |
+| `MINIAPP_SUPABASE_ACCESS_TOKEN` | Supabase Dashboard → Account → Access Tokens → **New token** |
 
 > 🔐 `.env.dev` está en `.gitignore`, no se va a commitear. Si dudás, corré `git status` y verificá que no aparezca.
-
-> 💡 `MINIAPP_API_KEY` es un token que generás vos (`openssl rand -hex 32`) y se usa para autorizar el `deploy_miniapp` edge function. Compartíselo al admin del core para que lo agregue a sus secrets.
 
 ---
 
@@ -122,6 +126,21 @@ Esto crea la tabla `items` con RLS. Verificalo en el dashboard de Supabase → *
 
 > 💡 La tabla `items` es solo un **Hello World**. Cuando arranques tu propia mini-app, vas a borrar la migration `0001_init.sql` o reemplazarla por la del schema real.
 
+> 🤖 **Tip si usás Claude Code / AI tooling:** registrá el Supabase MCP server apuntando al proyecto de tu mini-app para que el AI pueda aplicar migrations y queries sin que vos copies/pegues comandos CLI. Token va por env var (no flag) para que no quede en listings/output, y scope `user` para que sea visible desde cualquier directorio (no solo el del proyecto):
+>
+> ```bash
+> printf 'Supabase PAT: ' >&2; read -rs TOKEN; echo
+> claude mcp add -s user supabase-<id> --env SUPABASE_ACCESS_TOKEN="$TOKEN" -- npx -y @supabase/mcp-server-supabase@latest > /dev/null
+> unset TOKEN
+> claude mcp list | grep supabase-<id>
+> ```
+>
+> Generá el PAT en `https://supabase.com/dashboard/account/tokens`. Notas:
+> - Sin `-s user`, el MCP queda atado al cwd donde corriste el comando — invisible desde sesiones en otros dirs.
+> - El token queda guardado plaintext en `~/.claude.json` — normal para MCP, inevitable.
+> - **No** lo pongas como `--access-token` flag — ahí filtra a `claude mcp list` y `ps`.
+> - Después de agregar, `/mcp` dentro de Claude Code refresca la lista (o reiniciar sesión).
+
 ---
 
 ## Paso 6 — Auth: registro en core + JWKS
@@ -141,14 +160,18 @@ El script genera los keypairs ES256 (dev + prod), inserta la fila en el Supabase
 1. **Setear secrets en Fly.io** (comandos `fly secrets set ...` con las private keys)
 2. **Redeploy del core** (`fly deploy`)
 3. **Insertar fila en Supabase PROD** (SQL que imprime el script — correrlo en el SQL Editor del Supabase prod del core)
-4. **Configurar JWKS en el Supabase de tu mini-app:**
-   - Settings → Auth → JWT Keys → Custom signing key (JWKS URL)
-   - Dev Supabase: `https://dev.locale.com.ar/.well-known/jwks/<id>.json`
-   - Prod Supabase: `https://core.locale.com.ar/.well-known/jwks/<id>.json`
+4. **Importar la public key del kernel al Supabase de tu mini-app** (en ambos proyectos: dev + prod):
 
-A partir de acá, cuando un usuario haga una request al Supabase del miniapp con el JWT del kernel, Supabase valida la firma contra la pública y resuelve `auth.uid() = sub` correctamente — habilitando RLS.
+   En el dashboard del Supabase del miniapp → `Settings → API → JWT Keys → add asymmetric signing key`:
+   - **Algorithm**: ES256
+   - **kid**: el que imprimió `register-miniapp.ts` (también está en Fly secrets como `<SLUG>_ES256_{DEV|PROD}_KID` y en `locale-core/app/.env`)
+   - **Public key (PEM)**: contenido del archivo `.keys/<slug>-public-{dev,prod}.pem` que generó el script. Si solo tenés la private, derivar con: `openssl ec -in .keys/<slug>-private-dev.pem -pubout`
 
-> 💡 Si más adelante ves errores `401 Unauthorized` al crear ítems, **siempre** verificá el JWKS antes de tocar el código.
+A partir de acá, cuando un usuario haga una request al Supabase del miniapp con el JWT del kernel, Supabase valida la firma contra la public key que pegaste y resuelve `auth.uid() = sub` correctamente — habilitando RLS.
+
+> ⚠️ **NO es JWKS URL.** Supabase NO fetchea ningún endpoint externo. La validación va contra la public key que vos pegaste manualmente en el dashboard de Supabase. Si una guía vieja menciona "JWKS URL" como opción, está desactualizada.
+
+> 💡 Si más adelante ves errores `401 Unauthorized` al crear ítems, verificá que: (a) el `kid` del header del JWT que firma el kernel matchea el `kid` que pegaste en Supabase, (b) la public key pegada corresponde a la private key que está en `<SLUG>_ES256_DEV_PRIVATE_KEY` de Fly.
 
 ---
 
@@ -240,9 +263,9 @@ Deberías ver:
 
 ## Paso 11 — Promover a producción
 
-1. **Repetí Paso 3** creando un segundo proyecto Supabase (`locale-miniapp--<id>` con sufijo `-prod` si querés diferenciarlo).
+1. **Repetí Paso 4** creando un segundo proyecto Supabase (`locale-miniapp--<id>` con sufijo `-prod` si querés diferenciarlo).
 2. Aplicá las migrations al proyecto prod (Paso 5 con el nuevo project_ref).
-3. Configurá el JWKS en el Supabase de prod (Paso 6, punto 4 — URL prod).
+3. Importá la public PEM **prod** en el Supabase de prod (Paso 6, punto 4 — usando `.keys/<slug>-public-prod.pem` y `<SLUG>_ES256_PROD_KID`).
 4. Cargá los secrets `PROD_MINIAPP_*` en GitHub (Paso 8).
 5. Verificá que el admin del core haya corrido el SQL de insert en Supabase PROD (se lo imprime el script del Paso 6).
 6. Mergeá `dev → main` con un PR (NO uses squash — semantic-release necesita los commits originales):
@@ -261,7 +284,7 @@ Deberías ver:
 |---|---|
 | Veo "Cargando…" para siempre | El SDK no se inyectó / el HTML no llegó al kernel. Ver Network tab y consola. |
 | "Invitado" en lugar de mi email | El kernel no devolvió un user válido. Probaste sin `?mini-app-dev-mode=true`? |
-| `401 Unauthorized` al crear ítem | El JWT no está pasando RLS. Verificá el JWKS (Paso 6, punto 4). |
+| `401 Unauthorized` al crear ítem | El JWT no está pasando RLS. Verificá Paso 6 punto 4: que el `kid` y la public PEM pegada en Supabase matcheen lo que firma el kernel. |
 | `404` cuando abro `/locale.com.ar/<id>` | El core no registró tu mini-app. Verificá con el admin. |
 | El modal del kernel no muestra la versión | El edge function `deploy_miniapp` falló. Mirá `bunx supabase functions logs deploy_miniapp`. |
 | `bun run build` falla con "SDK no encontrado" | `bun install` no terminó OK. Borrá `node_modules` y reinstalá. |
@@ -282,5 +305,3 @@ Deberías ver:
 ---
 
 > ❓ ¿Trabaste en algún paso? Abrí un issue en este repo o pedí ayuda en el canal de Locale. Si encontraste algo confuso o desactualizado en esta guía, **mejorala** — es el camino más rápido para que la próxima persona no tropiece.
-
-<!-- TODO: specific steps for "prod" - create supabase proyect - prod .env -->
