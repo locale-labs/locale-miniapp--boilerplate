@@ -57,21 +57,23 @@ gh workflow run deploy-dev.yml --ref dev
 gh workflow run deploy-prod.yml --ref main   # sin pasar por semantic-release
 ```
 
-## Auth setup (ES256 + JWKS) — paso manual, una vez por mini-app
+## Auth setup (ES256 + JWK import) — paso manual, una vez por mini-app
 
-> Esta parte hoy no está automatizada. Hay que hacerla una vez al crear la mini-app.
+> Esta parte hoy no está automatizada. Hay que hacerla una vez al crear la mini-app. Detalle paso a paso en [FIRST_STEPS.md Paso 6](./FIRST_STEPS.md).
 
-1. **Generar keypair ES256** (en `locale-core`, hay un script). Ejemplo manual con `openssl`:
+1. **Generar keypair + registrar** desde `locale-core`:
    ```bash
-   openssl ecparam -name prime256v1 -genkey -noout -out private.pem
-   openssl ec -in private.pem -pubout -out public.pem
+   cd locale-core && bun run scripts/register-miniapp.ts --slug {{MINIAPP_ID}} --name "{{MINIAPP_NAME}}"
    ```
-2. **Registrar el miniapp en `locale-core`**:
-   - Agregar entry en la config con `id="{{MINIAPP_ID}}"`, public key (JWK).
-   - Configurar env var `{{MINIAPP_ID_UPPER}}_ES256_ENV_PRIVATE_KEY` en Fly.io secrets del core.
-   - Agregar `id="{{MINIAPP_ID}}"` al registry para que `/{{MINIAPP_ID}}/` rutee correctamente.
-3. **Configurar JWKS en el Supabase del miniapp**:
-   Settings → Auth → JWT Keys → Custom → apuntar al endpoint público del core que expone la public key.
+   Genera `.keys/{{MINIAPP_ID}}-private-{dev,prod}.pem` + `.keys/{{MINIAPP_ID}}-{dev,prod}.kid`, inserta en Core DEV Supabase, e imprime el resto.
+
+2. **Setear Fly secrets** (output del script — `{{MINIAPP_ID_UPPER}}_ES256_{DEV,PROD}_{PRIVATE_KEY,KID}`).
+
+3. **Importar JWK en el Supabase del miniapp** (dev y prod):
+   - URL: `https://supabase.com/dashboard/project/<ref>/settings/jwt`
+   - `Create Standby Key` → `Import` → pegar JWK privado (snippet Node en `FIRST_STEPS.md` 6.4)
+   - Promover Standby → Current
+   - ⚠️ Es JSON (JWK con `d`), no PEM ni JWKS URL.
 
 Esto permite RLS nativo: `auth.uid() = sub` del JWT firmado por el kernel.
 

@@ -15,7 +15,7 @@ Template para crear miniapps nuevas. Un dev (típicamente externo al core-team) 
 - **La keypair ES256 del miniapp se la genera el core-team** corriendo `locale-core/scripts/register-miniapp.ts`. El dev externo recibe solo `MINIAPP_API_KEY` y `MINIAPP_DEPLOY_SECRET` (no la private key).
 - **Toda escritura/lectura va con RLS.** Patrón estándar: `auth.uid() = owner_id`. El JWT que firma el Core ya pone `sub = user.id`, así que RLS funciona nativo.
 - **Output del build = un único HTML self-contained.** No agregar assets externos en runtime.
-- **JWKS público.** El endpoint del Core `/.well-known/jwks/<slug>.json` debe ser fetcheable sin dev-gate (aunque hoy Supabase no lo consume directo; ver workspace LEARNINGS).
+- **Validación JWT en el Supabase del miniapp.** El Core firma con private ES256; el Supabase del miniapp valida porque tiene el mismo material importado a mano como JWK privado (`Settings → JWT → Create Standby Key → Import → JSON`, promover a Current). No fetchea JWKS externo — el endpoint `/.well-known/jwks/<slug>.json` del Core fue eliminado en mayo 2026. Detalle en workspace LEARNINGS.
 
 ## Stack y entrypoints
 
@@ -49,8 +49,7 @@ Template para crear miniapps nuevas. Un dev (típicamente externo al core-team) 
 ## Gotchas
 
 - **`init-config/*.sql` se corren a mano** en Supabase SQL Editor. **No** son migrations de `supabase db push`.
-- **El JWKS público del Core** debe estar accesible sin gate. El dev-gate de `dev.locale.com.ar` tiene allowlist; ver setup.
-- **Pegado de public key en Supabase del miniapp** (Settings → API → JWT Keys, algoritmo ES256, mismo `kid` que el Core firma). El JWT del Core no se valida vía JWKS fetch; se valida con la public key importada en el dashboard.
+- **Import del JWK en Supabase del miniapp** (`Settings → JWT → Create Standby Key → Import → JSON`, algoritmo ES256, mismo `kid` que el Core firma, promover Standby → Current). UI cambió mayo 2026: ya no es `Settings → API → JWT Keys`, y la UI **no acepta PEM** — exige JWK privado completo (con `d`). Snippet Node para generar el JWK desde la PEM en `FIRST_STEPS.md` paso 6.4. El JWT del Core no se valida vía JWKS fetch; se valida con el JWK importado en el dashboard.
 - **No usar squash merge a `main`.** semantic-release necesita commits originales.
 - **Workflows asumen GitHub secrets**: `MINIAPP_SUPABASE_*`, `MINIAPP_API_KEY`, `MINIAPP_DEPLOY_SECRET`, `PROD_*`. Si faltan, los releases fallan en silencio.
 - **Conventional commits obligatorio** (`feat:`, `fix:`, `BREAKING CHANGE:`).

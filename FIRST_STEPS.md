@@ -143,35 +143,89 @@ Esto crea la tabla `items` con RLS. Verificalo en el dashboard de Supabase → *
 
 ---
 
-## Paso 6 — Auth: registro en core + JWKS
+## Paso 6 — Auth: registro en core + importar JWK al Supabase del miniapp
 
 El kernel firma JWTs con una clave privada ES256 propia de cada mini-app, y el Supabase del miniapp valida la firma contra la pública.
 
 **Quién hace esto:** quien tenga acceso al repo de `locale-core` (por ahora, el equipo core).
 
-Desde la raíz de `locale-core`, corré el script de registro:
+### 6.1 Correr el script de registro
+
+Desde la raíz de `locale-core`:
 
 ```bash
 bun run scripts/register-miniapp.ts --slug <id> --name "<nombre>"
 ```
 
-El script genera los keypairs ES256 (dev + prod), inserta la fila en el Supabase DEV del core, e imprime exactamente los comandos a ejecutar. Seguí los pasos que imprime en orden:
+El script:
+- Genera keypairs ES256 (dev + prod) en `locale-core/.keys/<slug>-private-{dev,prod}.pem`
+- Genera UUIDs para los `kid` y los guarda en `.keys/<slug>-{dev,prod}.kid`
+- Inserta la fila en el Supabase DEV del core
+- Imprime los comandos exactos para los pasos siguientes
 
-1. **Setear secrets en Fly.io** (comandos `fly secrets set ...` con las private keys)
-2. **Redeploy del core** (`fly deploy`)
-3. **Insertar fila en Supabase PROD** (SQL que imprime el script — correrlo en el SQL Editor del Supabase prod del core)
-4. **Importar la public key del kernel al Supabase de tu mini-app** (en ambos proyectos: dev + prod):
+### 6.2 Cargar secrets a Fly + redeploy core
 
-   En el dashboard del Supabase del miniapp → `Settings → API → JWT Keys → add asymmetric signing key`:
-   - **Algorithm**: ES256
-   - **kid**: el que imprimió `register-miniapp.ts` (también está en Fly secrets como `<SLUG>_ES256_{DEV|PROD}_KID` y en `locale-core/app/.env`)
-   - **Public key (PEM)**: contenido del archivo `.keys/<slug>-public-{dev,prod}.pem` que generó el script. Si solo tenés la private, derivar con: `openssl ec -in .keys/<slug>-private-dev.pem -pubout`
+Copiar y ejecutar los comandos `fly secrets set ...` que imprimió el script. Después:
 
-A partir de acá, cuando un usuario haga una request al Supabase del miniapp con el JWT del kernel, Supabase valida la firma contra la public key que pegaste y resuelve `auth.uid() = sub` correctamente — habilitando RLS.
+```bash
+cd locale-core && fly deploy
+```
 
-> ⚠️ **NO es JWKS URL.** Supabase NO fetchea ningún endpoint externo. La validación va contra la public key que vos pegaste manualmente en el dashboard de Supabase. Si una guía vieja menciona "JWKS URL" como opción, está desactualizada.
+### 6.3 Insertar fila en Supabase PROD del core
 
-> 💡 Si más adelante ves errores `401 Unauthorized` al crear ítems, verificá que: (a) el `kid` del header del JWT que firma el kernel matchea el `kid` que pegaste en Supabase, (b) la public key pegada corresponde a la private key que está en `<SLUG>_ES256_DEV_PRIVATE_KEY` de Fly.
+El script imprime un `INSERT INTO public.miniapps ...`. Pegarlo en el SQL Editor del Supabase **prod** del core (uno solo, no de cada miniapp).
+
+### 6.4 Importar JWK del kernel al Supabase del miniapp (dev + prod)
+
+⚠️ **Importante:** este paso cambió respecto a guías viejas. Lo que está hoy en Supabase:
+
+- **Path UI:** `Settings → JWT` (no `Settings → API → JWT Keys` — Supabase movió la UI). URL directa: `https://supabase.com/dashboard/project/<ref>/settings/jwt`.
+- **Botón:** `Create Standby Key` → `Import`.
+- **Formato:** UI **sólo acepta JSON (JWK)**, no PEM. Un JWK public-only (`kty, crv, kid, x, y`) **falla** con "required properties missing". Hay que importar el **JWK privado completo** (incluye campo `d`).
+- **Status:** queda como standby. Hay que promoverlo a **current** para que valide tokens entrantes.
+
+#### Generar el JWK privado desde la PEM
+
+Desde la raíz de `locale-core`, para cada entorno (dev y prod), corré:
+
+```bash
+SLUG=<id>
+ENV=dev    # o prod
+KID=$(cat .keys/${SLUG}-${ENV}.kid)
+
+node -e "
+const crypto=require('crypto'),fs=require('fs');
+const pem=fs.readFileSync('.keys/${SLUG}-private-${ENV}.pem','utf8');
+const jwk=crypto.createPrivateKey(pem).export({format:'jwk'});
+console.log(JSON.stringify({
+  kty: jwk.kty,
+  crv: jwk.crv,
+  kid: '${KID}',
+  alg: 'ES256',
+  use: 'sig',
+  x: jwk.x,
+  y: jwk.y,
+  d: jwk.d
+}, null, 2));
+"
+```
+
+Copiá el JSON que imprime.
+
+#### Importarlo en Supabase
+
+1. Abrí `https://supabase.com/dashboard/project/<MINIAPP_SUPABASE_PROJECT_ID>/settings/jwt`
+2. `Create Standby Key` → `Import`
+3. Pegá el JSON entero (incluye `d`)
+4. Confirmar import — debe aparecer como **Standby**
+5. Promover **Standby → Current** (botón "Use this key" / "Rotate")
+6. Repetir para prod (cuando hagas el deploy prod del Paso 11)
+
+A partir de acá, cuando un usuario haga una request al Supabase del miniapp con el JWT del kernel, Supabase valida la firma contra la public key republicada en su propio JWKS y resuelve `auth.uid() = sub` correctamente — habilitando RLS.
+
+> ⚠️ **NO es JWKS URL.** Supabase NO fetchea ningún endpoint externo. La validación va contra el JWK que importaste. Si una guía vieja menciona "JWKS URL" como opción, está desactualizada.
+
+> 💡 Si más adelante ves errores `401 Unauthorized` al crear ítems, verificá que: (a) el `kid` del header del JWT que firma el kernel matchea el `kid` del JWK que importaste, (b) el JWK fue promovido de Standby a Current, (c) la private en el JWK corresponde a la que está en `<SLUG>_ES256_DEV_PRIVATE_KEY` de Fly (mismo material, no es otro keypair).
 
 ---
 
@@ -265,7 +319,7 @@ Deberías ver:
 
 1. **Repetí Paso 4** creando un segundo proyecto Supabase (`locale-miniapp--<id>` con sufijo `-prod` si querés diferenciarlo).
 2. Aplicá las migrations al proyecto prod (Paso 5 con el nuevo project_ref).
-3. Importá la public PEM **prod** en el Supabase de prod (Paso 6, punto 4 — usando `.keys/<slug>-public-prod.pem` y `<SLUG>_ES256_PROD_KID`).
+3. Importá el JWK **prod** en el Supabase de prod (Paso 6.4 — generar JWK con `ENV=prod` y `KID=$(cat .keys/<slug>-prod.kid)`, después import en `Settings → JWT` del Supabase prod del miniapp, promover Standby → Current).
 4. Cargá los secrets `PROD_MINIAPP_*` en GitHub (Paso 8).
 5. Verificá que el admin del core haya corrido el SQL de insert en Supabase PROD (se lo imprime el script del Paso 6).
 6. Mergeá `dev → main` con un PR (NO uses squash — semantic-release necesita los commits originales):
@@ -284,7 +338,7 @@ Deberías ver:
 |---|---|
 | Veo "Cargando…" para siempre | El SDK no se inyectó / el HTML no llegó al kernel. Ver Network tab y consola. |
 | "Invitado" en lugar de mi email | El kernel no devolvió un user válido. Probaste sin `?mini-app-dev-mode=true`? |
-| `401 Unauthorized` al crear ítem | El JWT no está pasando RLS. Verificá Paso 6 punto 4: que el `kid` y la public PEM pegada en Supabase matcheen lo que firma el kernel. |
+| `401 Unauthorized` al crear ítem | El JWT no está pasando RLS. Verificá Paso 6.4: (a) el JWK importado en Supabase tiene el mismo `kid` que firma el kernel, (b) fue promovido de Standby a Current, (c) la private del JWK matchea `<SLUG>_ES256_DEV_PRIVATE_KEY` de Fly. |
 | `404` cuando abro `/locale.com.ar/<id>` | El core no registró tu mini-app. Verificá con el admin. |
 | El modal del kernel no muestra la versión | El edge function `deploy_miniapp` falló. Mirá `bunx supabase functions logs deploy_miniapp`. |
 | `bun run build` falla con "SDK no encontrado" | `bun install` no terminó OK. Borrá `node_modules` y reinstalá. |
