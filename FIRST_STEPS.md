@@ -81,13 +81,14 @@ git commit -m "chore: init from template"
 cp .env.dev.example .env.dev
 ```
 
-El archivo tiene 6 vars. 3 se completan en el Paso 4 (vienen del dashboard de Supabase). Las otras 3 las generás ahora:
+El archivo tiene 7 vars. 3 se completan en el Paso 4 (vienen del dashboard de Supabase). Las otras 4 las generás/conseguís ahora:
 
 | Var | Cómo se obtiene |
 |---|---|
-| `MINIAPP_DEPLOY_SECRET` | `openssl rand -hex 32` |
+| `MINIAPP_DEPLOY_SECRET` | **Pedírselo al admin del core** — es un valor **global compartido entre todos los miniapps**, no es per-miniapp. El core valida el header `x-deploy-secret` contra UNA env var global suya. Si generás uno random, el deploy "pasa verde" pero el core devuelve 401 al register, la fila queda con `dev_version=NULL` y `https://locale.com.ar/<slug>` tira 404. **Tech debt**: validar per-row contra `miniapps.api_key` ([`locale-core/NOTES/tech_debt_deploy_secret.md`](../locale-core/NOTES/tech_debt_deploy_secret.md)). |
 | `MINIAPP_API_KEY` | `openssl rand -hex 32`. Después compartíselo al admin del core para que lo agregue como secret del edge function `deploy_miniapp` |
 | `MINIAPP_SUPABASE_ACCESS_TOKEN` | Supabase Dashboard → Account → Access Tokens → **New token** |
+| `MINIAPP_DEV_PASS` | Elegí un password (3 palabras random con https://bip39.onekey.so/ o lo que prefieras). **Guardalo en plaintext acá**: el bcrypt se va a vivir en la DB del miniapp (Paso 5.2) y bcrypt es one-way — si no anotás el plaintext acá lo perdés. Sirve para destrabar el form que aparece al abrir `dev.locale.com.ar/<slug>?mini-app-dev-mode=true`. |
 
 > 🔐 `.env.dev` está en `.gitignore`, no se va a commitear. Si dudás, corré `git status` y verificá que no aparezca.
 
@@ -99,10 +100,12 @@ Cada mini-app tiene **su propio proyecto Supabase** (separado del core y del res
 
 1. Andá a [supabase.com/dashboard](https://supabase.com/dashboard) → org de Locale → **"New project"**.
 2. Configurá:
-   - **Name**: `locale-miniapp--<id>` (mismo que el repo).
+   - **Name**: convención = `locale-miniapp--<id>-dev` para el proyecto **dev**, y `locale-miniapp--<id>` (sin sufijo) para **prod**. Ejemplo (mascotas): `locale-miniapp--lost-pets-dev` (dev) + `locale-miniapp--lost-pets` (prod). En este Paso estás creando el **dev**, así que va con sufijo `-dev`.
    - **Database password**: generá una y **guardala en 1Password** o donde corresponda. Después casi no la vas a necesitar, pero perderla es un dolor.
    - **Region**: elegí la más cercana a Argentina (`sa-east-1` o `us-east-1`).
    - **Pricing plan**: el que corresponda según el contexto.
+
+> 💡 El nombre del proyecto en Supabase es **cosmético**: las conexiones usan `project_ref` (la cadena tipo `abcdefghijk` en la URL), que es inmutable. Renombrar después no rompe nada.
 3. Esperá a que termine de provisionar (~2 minutos).
 4. Una vez listo, andá a **Settings → Integrations -> Data API** y copiá:
    - **Api URL** (sacale el "/rest/v1/" del final) → será `MINIAPP_SUPABASE_URL`
@@ -125,6 +128,47 @@ bunx supabase db push
 Esto crea la tabla `items` con RLS. Verificalo en el dashboard de Supabase → **Table Editor** → debe aparecer `items`.
 
 > 💡 La tabla `items` es solo un **Hello World**. Cuando arranques tu propia mini-app, vas a borrar la migration `0001_init.sql` o reemplazarla por la del schema real.
+
+### 5.1 Crear el bucket `miniapp-builds` en Storage
+
+El edge function `deploy_miniapp` (que corre el workflow de CI en cada push a `dev`/`main`) sube el HTML bundleado a Supabase Storage en el bucket **`miniapp-builds`**. Si el bucket no existe, el deploy falla con `❌ Deployment failed (500): {"error":"Bucket not found"}`.
+
+Crear el bucket — vía SQL (Dashboard → **SQL Editor**, o `bunx supabase db query`, o MCP):
+
+```sql
+INSERT INTO storage.buckets (id, name, public)
+VALUES ('miniapp-builds', 'miniapp-builds', true);
+```
+
+O por UI: **Storage → New bucket → name `miniapp-builds`, Public → Save**.
+
+Tiene que ser **público** porque el kernel hace fetch del HTML vía la URL pública (`https://<project>.supabase.co/storage/v1/object/public/miniapp-builds/builds/<version>/index.html`).
+
+Verificación:
+
+```sql
+SELECT id, name, public FROM storage.buckets WHERE id = 'miniapp-builds';
+-- debe devolver una fila con public = true
+```
+
+> 🔁 Repetir este paso también en el Supabase **prod** del miniapp (cuando llegues al Paso 11).
+
+### 5.2 Crear el dev-gate per-miniapp (tabla + RPC + password)
+
+El core, cuando se abre `dev.locale.com.ar/<slug>?mini-app-dev-mode=true`, llama a la RPC `public.dev_gate_verify(p text)` en el **Supabase del miniapp** para validar la contraseña del gate. Si la RPC no existe el browser ve el form pero al submit el verify revienta (RPC missing).
+
+Correr el SQL de [`init-config/DEV_GATE.md`](./init-config/DEV_GATE.md) contra el Supabase **dev** del miniapp (Dashboard → SQL Editor, o `bunx supabase db query`, o MCP). Crea `dev_gate_config`, la RPC, y hace el INSERT con el password hasheado con bcrypt.
+
+> ⚠️ **Usá el mismo password que pusiste en `MINIAPP_DEV_PASS` del Paso 3.** bcrypt es one-way: si después perdés el `.env.dev`, no hay forma de leer el hash de la DB — tenés que rotar haciendo otro UPDATE con un password nuevo.
+
+Verificación:
+
+```sql
+SELECT public.dev_gate_verify('<tu-password>') AS verify_ok;
+-- debe devolver true
+```
+
+> 🔁 Repetir también en el Supabase **prod** del miniapp (Paso 11) con un password distinto si querés (o el mismo — depende de cómo manejen acceso a prod-dev-mode).
 
 > 🤖 **Tip si usás Claude Code / AI tooling:** registrá el Supabase MCP server apuntando al proyecto de tu mini-app para que el AI pueda aplicar migrations y queries sin que vos copies/pegues comandos CLI. Token va por env var (no flag) para que no quede en listings/output, y scope `user` para que sea visible desde cualquier directorio (no solo el del proyecto):
 >
@@ -154,13 +198,27 @@ El kernel firma JWTs con una clave privada ES256 propia de cada mini-app, y el S
 Desde la raíz de `locale-core`:
 
 ```bash
-bun run scripts/register-miniapp.ts --slug <id> --name "<nombre>"
+bun run scripts/register-miniapp.ts \
+  --slug <id> \
+  --name "<nombre>" \
+  --supabase-url-dev "$MINIAPP_SUPABASE_URL" \
+  --supabase-anon-key-dev "$MINIAPP_SUPABASE_ANON_PUBLIC"
 ```
+
+> 💡 Los dos últimos flags son **opcionales pero recomendados**. Los valores
+> salen del `.env.dev` del miniapp (Paso 4). Si los omitís, el script
+> imprime un UPDATE SQL manual al final que tenés que correr a mano en el
+> Supabase del core; si no lo corrés, la mini-app va a tirar
+> `not-configured` en el dev gate cuando intentes abrirla con
+> `?mini-app-dev-mode=true`.
 
 El script:
 - Genera keypairs ES256 (dev + prod) en `locale-core/.keys/<slug>-private-{dev,prod}.pem`
 - Genera UUIDs para los `kid` y los guarda en `.keys/<slug>-{dev,prod}.kid`
 - Inserta la fila en el Supabase DEV del core
+- Si pasaste los flags de Supabase, hace PATCH y deja `supabase_url_dev` /
+  `supabase_anon_key_dev` poblados en esa fila (idempotente — corre la
+  PATCH tanto si la fila se acaba de insertar como si ya existía)
 - Imprime los comandos exactos para los pasos siguientes
 
 ### 6.2 Cargar secrets a Fly + redeploy core
@@ -339,10 +397,14 @@ Deberías ver:
 | Veo "Cargando…" para siempre | El SDK no se inyectó / el HTML no llegó al kernel. Ver Network tab y consola. |
 | "Invitado" en lugar de mi email | El kernel no devolvió un user válido. Probaste sin `?mini-app-dev-mode=true`? |
 | `401 Unauthorized` al crear ítem | El JWT no está pasando RLS. Verificá Paso 6.4: (a) el JWK importado en Supabase tiene el mismo `kid` que firma el kernel, (b) fue promovido de Standby a Current, (c) la private del JWK matchea `<SLUG>_ES256_DEV_PRIVATE_KEY` de Fly. |
-| `404` cuando abro `/locale.com.ar/<id>` | El core no registró tu mini-app. Verificá con el admin. |
+| `404` cuando abro `/locale.com.ar/<id>` | El core no registró la ruta. Causas comunes: (a) la fila no existe en `miniapps`; (b) deploy llegó OK pero `dev_version`/`dev_url` quedaron NULL por mismatch de `MINIAPP_DEPLOY_SECRET`; (c) core viejo (anterior a mayo 2026) que skipea rutas si `url` (prod) está NULL aunque `dev_url` esté poblado — actualizar core. |
+| Dev gate dice `"El gate no está configurado en el Supabase dev de la mini-app"` | `supabase_url_dev` o `supabase_anon_key_dev` está NULL en la fila del core. Re-correr `register-miniapp.ts` con `--supabase-url-dev` / `--supabase-anon-key-dev`, o correr la UPDATE manual del Paso 6.1. |
+| Dev gate dice `"No se pudo verificar contra Supabase"` o submit del password tira error | Falta correr el SQL del Paso 5.2 contra el Supabase dev del miniapp — no existe la RPC `dev_gate_verify` ni la tabla `dev_gate_config`. |
+| El password del dev-gate "no funciona" y no me acuerdo cuál puse | bcrypt es one-way, no se recupera. Si lo guardaste en `.env.dev` como `MINIAPP_DEV_PASS` (Paso 3), está ahí. Si no, rotalo: re-correr el INSERT/UPDATE del Paso 5.2 con un password nuevo, anotalo en `.env.dev` esta vez. |
 | El modal del kernel no muestra la versión | El edge function `deploy_miniapp` falló. Mirá `bunx supabase functions logs deploy_miniapp`. |
 | `bun run build` falla con "SDK no encontrado" | `bun install` no terminó OK. Borrá `node_modules` y reinstalá. |
 | El push a `dev` falla en CI con "secret not found" | Faltan secrets de GitHub (Paso 8). |
+| Deploy falla con `❌ Deployment failed (500): {"error":"Bucket not found"}` | Falta crear el bucket `miniapp-builds` en Storage del Supabase del miniapp. Ver Paso 5.1. |
 
 ---
 
@@ -354,7 +416,7 @@ Deberías ver:
   - Agregá el HTML correspondiente en `src/html/index.html`.
 - **Agregá nuevas migrations** a `supabase/migrations/` (numeradas: `0002_...sql`, `0003_...sql`).
 - **Agregá edge functions** propias en `supabase/functions/<tu-funcion>/` y registralas en `supabase/config.toml`.
-- **Storage buckets, cron jobs, dev gates**: usá la mini-app de mascotas como referencia (`locale-miniapp--mascotas-perdidas/init-config/`).
+- **Storage buckets, cron jobs**: usá la mini-app de mascotas como referencia (`locale-miniapp--mascotas-perdidas/init-config/`). El dev-gate ya quedó cubierto en el Paso 5.2.
 
 ---
 
