@@ -268,7 +268,7 @@ Para probar **todo el flujo end-to-end** necesitás deployar a `dev` y abrirla d
 
 Antes del primer push, agregá los secrets en **Settings → Secrets and variables → Actions** del repo:
 
-> 💡 `gh secret set DEV_MINIAPP_SUPABASE_URL` desde la terminal te ahorra ir al browser. `gh secret list` para ver lo que ya cargaste.
+> 💡 `gh secret set DEV_MINIAPP_SUPABASE_URL --body "xx_secret"` desde la terminal te ahorra ir al browser. `gh secret list` para ver lo que ya cargaste.
 
 | Secret | De dónde sale |
 |---|---|
@@ -278,6 +278,12 @@ Antes del primer push, agregá los secrets en **Settings → Secrets and variabl
 | `DEV_MINIAPP_DEPLOY_SECRET` | " |
 | `DEV_MINIAPP_API_KEY` | " |
 | `DEV_MINIAPP_SUPABASE_ACCESS_TOKEN` | " |
+| `PROD_MINIAPP_SUPABASE_URL` | Mismo valor que `.env.dev` |
+| `PROD_MINIAPP_SUPABASE_ANON_PUBLIC` | " |
+| `PROD_MINIAPP_SUPABASE_PROJECT_ID` | " |
+| `PROD_MINIAPP_DEPLOY_SECRET` | " |
+| `PROD_MINIAPP_API_KEY` | " |
+| `PROD_MINIAPP_SUPABASE_ACCESS_TOKEN` | " |
 | `CORE_DEV_SUPABASE_URL` | Te lo da el admin del core (compartido entre mini-apps) |
 | `CORE_DEV_SUPABASE_ANON_PUBLIC` | " |
 | `CORE_PROD_SUPABASE_URL` | " |
