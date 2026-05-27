@@ -119,6 +119,10 @@ Cada mini-app tiene **su propio proyecto Supabase** (separado del core y del res
 
 Linkeá tu repo local con el proyecto Supabase y aplicá las migrations:
 
+- Tenes que estar con la terminal abierta en el path de este proyecto antes de correr el `link`
+
+> suplanta $MINIAPP_SUPABASE_PROJECT_ID con el id que guardaste recien en el archivo .env.dev
+
 ```bash
 bunx supabase login                                      # una sola vez, abre el browser
 bunx supabase link --project-ref $MINIAPP_SUPABASE_PROJECT_ID
@@ -129,48 +133,7 @@ Esto crea la tabla `items` con RLS. Verificalo en el dashboard de Supabase → *
 
 > 💡 La tabla `items` es solo un **Hello World**. Cuando arranques tu propia mini-app, vas a borrar la migration `0001_init.sql` o reemplazarla por la del schema real.
 
-### 5.1 Crear el bucket `miniapp-builds` en Storage
-
-El edge function `deploy_miniapp` (que corre el workflow de CI en cada push a `dev`/`main`) sube el HTML bundleado a Supabase Storage en el bucket **`miniapp-builds`**. Si el bucket no existe, el deploy falla con `❌ Deployment failed (500): {"error":"Bucket not found"}`.
-
-Crear el bucket — vía SQL (Dashboard → **SQL Editor**, o `bunx supabase db query`, o MCP):
-
-```sql
-INSERT INTO storage.buckets (id, name, public)
-VALUES ('miniapp-builds', 'miniapp-builds', true);
-```
-
-O por UI: **Storage → New bucket → name `miniapp-builds`, Public → Save**.
-
-Tiene que ser **público** porque el kernel hace fetch del HTML vía la URL pública (`https://<project>.supabase.co/storage/v1/object/public/miniapp-builds/builds/<version>/index.html`).
-
-Verificación:
-
-```sql
-SELECT id, name, public FROM storage.buckets WHERE id = 'miniapp-builds';
--- debe devolver una fila con public = true
-```
-
-> 🔁 Repetir este paso también en el Supabase **prod** del miniapp (cuando llegues al Paso 11).
-
-### 5.2 Crear el dev-gate per-miniapp (tabla + RPC + password)
-
-El core, cuando se abre `dev.locale.com.ar/<slug>?mini-app-dev-mode=true`, llama a la RPC `public.dev_gate_verify(p text)` en el **Supabase del miniapp** para validar la contraseña del gate. Si la RPC no existe el browser ve el form pero al submit el verify revienta (RPC missing).
-
-Correr el SQL de [`init-config/DEV_GATE.md`](./init-config/DEV_GATE.md) contra el Supabase **dev** del miniapp (Dashboard → SQL Editor, o `bunx supabase db query`, o MCP). Crea `dev_gate_config`, la RPC, y hace el INSERT con el password hasheado con bcrypt.
-
-> ⚠️ **Usá el mismo password que pusiste en `MINIAPP_DEV_PASS` del Paso 3.** bcrypt es one-way: si después perdés el `.env.dev`, no hay forma de leer el hash de la DB — tenés que rotar haciendo otro UPDATE con un password nuevo.
-
-Verificación:
-
-```sql
-SELECT public.dev_gate_verify('<tu-password>') AS verify_ok;
--- debe devolver true
-```
-
-> 🔁 Repetir también en el Supabase **prod** del miniapp (Paso 11) con un password distinto si querés (o el mismo — depende de cómo manejen acceso a prod-dev-mode).
-
-> 🤖 **Tip si usás Claude Code / AI tooling:** registrá el Supabase MCP server apuntando al proyecto de tu mini-app para que el AI pueda aplicar migrations y queries sin que vos copies/pegues comandos CLI. Token va por env var (no flag) para que no quede en listings/output, y scope `user` para que sea visible desde cualquier directorio (no solo el del proyecto):
+> 🤖 **Tip si usás Claude Code / AI tooling:** registrá el Supabase MCP server apuntando al org de tu mini-app para que el AI pueda aplicar migrations y queries sin que vos copies/pegues comandos CLI. Token va por env var (no flag) para que no quede en listings/output, y scope `user` para que sea visible desde cualquier directorio (no solo el del proyecto):
 >
 > ```bash
 > printf 'Supabase PAT: ' >&2; read -rs TOKEN; echo
@@ -185,6 +148,39 @@ SELECT public.dev_gate_verify('<tu-password>') AS verify_ok;
 > - **No** lo pongas como `--access-token` flag — ahí filtra a `claude mcp list` y `ps`.
 > - Después de agregar, `/mcp` dentro de Claude Code refresca la lista (o reiniciar sesión).
 
+### 5.1 Crear el bucket `miniapp-builds` en Storage
+
+El edge function `deploy_miniapp` (que corre el workflow de CI en cada push a `dev`/`main`) sube el HTML bundleado a Supabase Storage en el bucket **`miniapp-builds`**. Si el bucket no existe, el deploy falla con `❌ Deployment failed (500): {"error":"Bucket not found"}`.
+
+Crear el bucket — vía SQL (Dashboard → **SQL Editor**):
+
+```sql
+INSERT INTO storage.buckets (id, name, public)
+VALUES ('miniapp-builds', 'miniapp-builds', true);
+```
+
+Verificación:
+
+```sql
+SELECT id, name, public FROM storage.buckets WHERE id = 'miniapp-builds';
+-- debe devolver una fila con public = true
+```
+
+### 5.2 Crear el dev-gate per-miniapp (tabla + RPC + password) (solo miniapp-dev)
+
+El core, cuando se abre `dev.locale.com.ar/<slug>?mini-app-dev-mode=true`, llama a la RPC `public.dev_gate_verify(p text)` en el **Supabase del miniapp** para validar la contraseña del gate. Si la RPC no existe el browser ve el form pero al submit el verify revienta (RPC missing).
+
+Correr el SQL de [`init-config/DEV_GATE.md`](./init-config/DEV_GATE.md) contra el Supabase **dev** del miniapp (Dashboard → SQL Editor, o `bunx supabase db query`, o MCP). Crea `dev_gate_config`, la RPC, y hace el INSERT con el password hasheado con bcrypt.
+
+> ⚠️ **Usá el mismo password que pusiste en `MINIAPP_DEV_PASS` del Paso 3.** bcrypt es one-way: si después perdés el `.env.dev`, no hay forma de leer el hash de la DB — tenés que rotar haciendo otro UPDATE con un password nuevo.
+
+Verificación:
+
+```sql
+SELECT public.dev_gate_verify('<tu-password>') AS verify_ok;
+-- debe devolver true
+```
+
 ---
 
 ## Paso 6 — Auth: registro en core + importar JWK al Supabase del miniapp
@@ -197,20 +193,15 @@ El kernel firma JWTs con una clave privada ES256 propia de cada mini-app, y el S
 
 Desde la raíz de `locale-core`:
 
+> reemplazar "packageJson.miniApp.id" con el valor actual que se encuentra en el archivo package.json y los $MINIAPP_SUPABASE_URL con los valores que estan en los archivos .env
+
 ```bash
 bun run scripts/register-miniapp.ts \
-  --slug <id> \
-  --name "<nombre>" \
+  --slug <packageJson.miniApp.id> \
+  --name "<packageJson.miniApp.name>" \
   --supabase-url-dev "$MINIAPP_SUPABASE_URL" \
   --supabase-anon-key-dev "$MINIAPP_SUPABASE_ANON_PUBLIC"
 ```
-
-> 💡 Los dos últimos flags son **opcionales pero recomendados**. Los valores
-> salen del `.env.dev` del miniapp (Paso 4). Si los omitís, el script
-> imprime un UPDATE SQL manual al final que tenés que correr a mano en el
-> Supabase del core; si no lo corrés, la mini-app va a tirar
-> `not-configured` en el dev gate cuando intentes abrirla con
-> `?mini-app-dev-mode=true`.
 
 El script:
 - Genera keypairs ES256 (dev + prod) en `locale-core/.keys/<slug>-private-{dev,prod}.pem`
@@ -223,11 +214,7 @@ El script:
 
 ### 6.2 Cargar secrets a Fly + redeploy core
 
-Copiar y ejecutar los comandos `fly secrets set ...` que imprimió el script. Después:
-
-```bash
-cd locale-core && fly deploy
-```
+Copiar y ejecutar los comandos `fly secrets set ...` que imprimió el script.
 
 ### 6.3 Insertar fila en Supabase PROD del core
 
@@ -244,31 +231,7 @@ El script imprime un `INSERT INTO public.miniapps ...`. Pegarlo en el SQL Editor
 
 #### Generar el JWK privado desde la PEM
 
-Desde la raíz de `locale-core`, para cada entorno (dev y prod), corré:
-
-```bash
-SLUG=<id>
-ENV=dev    # o prod
-KID=$(cat .keys/${SLUG}-${ENV}.kid)
-
-node -e "
-const crypto=require('crypto'),fs=require('fs');
-const pem=fs.readFileSync('.keys/${SLUG}-private-${ENV}.pem','utf8');
-const jwk=crypto.createPrivateKey(pem).export({format:'jwk'});
-console.log(JSON.stringify({
-  kty: jwk.kty,
-  crv: jwk.crv,
-  kid: '${KID}',
-  alg: 'ES256',
-  use: 'sig',
-  x: jwk.x,
-  y: jwk.y,
-  d: jwk.d
-}, null, 2));
-"
-```
-
-Copiá el JSON que imprime.
+Desde la raíz de `locale-core`, para cada entorno (dev y prod), corré el script que lo genera y copiá el JSON que imprime.
 
 #### Importarlo en Supabase
 
@@ -277,7 +240,6 @@ Copiá el JSON que imprime.
 3. Pegá el JSON entero (incluye `d`)
 4. Confirmar import — debe aparecer como **Standby**
 5. Promover **Standby → Current** (botón "Use this key" / "Rotate")
-6. Repetir para prod (cuando hagas el deploy prod del Paso 11)
 
 A partir de acá, cuando un usuario haga una request al Supabase del miniapp con el JWT del kernel, Supabase valida la firma contra la public key republicada en su propio JWKS y resuelve `auth.uid() = sub` correctamente — habilitando RLS.
 
@@ -306,6 +268,8 @@ Para probar **todo el flujo end-to-end** necesitás deployar a `dev` y abrirla d
 
 Antes del primer push, agregá los secrets en **Settings → Secrets and variables → Actions** del repo:
 
+> 💡 `gh secret set DEV_MINIAPP_SUPABASE_URL` desde la terminal te ahorra ir al browser. `gh secret list` para ver lo que ya cargaste.
+
 | Secret | De dónde sale |
 |---|---|
 | `DEV_MINIAPP_SUPABASE_URL` | Mismo valor que `.env.dev` |
@@ -318,12 +282,8 @@ Antes del primer push, agregá los secrets en **Settings → Secrets and variabl
 | `CORE_DEV_SUPABASE_ANON_PUBLIC` | " |
 | `CORE_PROD_SUPABASE_URL` | " |
 | `CORE_PROD_SUPABASE_ANON_PUBLIC` | " |
-| `MINIAPP_SLUG` | El slug de tu mini-app (`<eventos>`) |
-| `MINIAPP_NAME` | Nombre visible (`Eventos del barrio`) |
-
-Los `PROD_*` los vas a llenar en el Paso 11.
-
-> 💡 `gh secret set DEV_MINIAPP_SUPABASE_URL` desde la terminal te ahorra ir al browser. `gh secret list` para ver lo que ya cargaste.
+| `MINIAPP_SLUG` | El slug de tu mini-app (packageJson.miniApp.id) |
+| `MINIAPP_NAME` | Nombre visible (packageJson.miniApp.name) |
 
 ---
 
