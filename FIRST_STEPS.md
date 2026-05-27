@@ -86,7 +86,7 @@ El archivo tiene 7 vars. 3 se completan en el Paso 4 (vienen del dashboard de Su
 | Var | Cómo se obtiene |
 |---|---|
 | `MINIAPP_DEPLOY_SECRET` | **Pedírselo al admin del core** — es un valor **global compartido entre todos los miniapps**, no es per-miniapp. El core valida el header `x-deploy-secret` contra UNA env var global suya. Si generás uno random, el deploy "pasa verde" pero el core devuelve 401 al register, la fila queda con `dev_version=NULL` y `https://locale.com.ar/<slug>` tira 404. **Tech debt**: validar per-row contra `miniapps.api_key` ([`locale-core/NOTES/tech_debt_deploy_secret.md`](../locale-core/NOTES/tech_debt_deploy_secret.md)). |
-| `MINIAPP_API_KEY` | `openssl rand -hex 32`. Después compartíselo al admin del core para que lo agregue como secret del edge function `deploy_miniapp` |
+| `MINIAPP_API_KEY` | `openssl rand -hex 32`. Es el **deploy token del propio miniapp** (no es del core, no es global). El `make deploy-supabase-functions-dev/prod` lo setea solo como secret del edge function `deploy_miniapp` de **este** miniapp (`supabase secrets set`). El builder lo manda en el header `x-miniapp-api-key` al deployar y `deploy_miniapp` valida que coincida. No hace falta el admin del core para esta key. |
 | `MINIAPP_SUPABASE_ACCESS_TOKEN` | Supabase Dashboard → Account → Access Tokens → **New token** |
 | `MINIAPP_DEV_PASS` | Elegí un password (3 palabras random con https://bip39.onekey.so/ o lo que prefieras). **Guardalo en plaintext acá**: el bcrypt se va a vivir en la DB del miniapp (Paso 5.2) y bcrypt es one-way — si no anotás el plaintext acá lo perdés. Sirve para destrabar el form que aparece al abrir `dev.locale.com.ar/<slug>?mini-app-dev-mode=true`. |
 
@@ -100,7 +100,7 @@ Cada mini-app tiene **su propio proyecto Supabase** (separado del core y del res
 
 1. Andá a [supabase.com/dashboard](https://supabase.com/dashboard) → org de Locale → **"New project"**.
 2. Configurá:
-   - **Name**: convención = `locale-miniapp--<id>-dev` para el proyecto **dev**, y `locale-miniapp--<id>` (sin sufijo) para **prod**. Ejemplo (mascotas): `locale-miniapp--lost-pets-dev` (dev) + `locale-miniapp--lost-pets` (prod). En este Paso estás creando el **dev**, así que va con sufijo `-dev`.
+   - **Name**: convención = `locale-miniapp--<id>-dev` para el proyecto **dev**. Ejemplo (mascotas): `locale-miniapp--lost-pets-dev` (dev).
    - **Database password**: generá una y **guardala en 1Password** o donde corresponda. Después casi no la vas a necesitar, pero perderla es un dolor.
    - **Region**: elegí la más cercana a Argentina (`sa-east-1` o `us-east-1`).
    - **Pricing plan**: el que corresponda según el contexto.
@@ -108,10 +108,10 @@ Cada mini-app tiene **su propio proyecto Supabase** (separado del core y del res
 > 💡 El nombre del proyecto en Supabase es **cosmético**: las conexiones usan `project_ref` (la cadena tipo `abcdefghijk` en la URL), que es inmutable. Renombrar después no rompe nada.
 3. Esperá a que termine de provisionar (~2 minutos).
 4. Una vez listo, andá a **Settings → Integrations -> Data API** y copiá:
-   - **Api URL** (sacale el "/rest/v1/" del final) → será `MINIAPP_SUPABASE_URL`
+   - **Api URL** (sacale el "/rest/v1/" del final) → pegala en el archivo .env.dev en `MINIAPP_SUPABASE_URL`
 5. Andá a **Settings → Configuration -> API keys -> Legacy anon, ...** y copiá:
-   - **anon public** → será `MINIAPP_SUPABASE_ANON_PUBLIC`
-6. **Settings → Configuration -> General → Project ID** → será `MINIAPP_SUPABASE_PROJECT_ID` (cadena tipo `abcdefghijk`).
+   - **anon public** → pegala en el archivo .env.dev en `MINIAPP_SUPABASE_ANON_PUBLIC`
+6. **Settings → Configuration -> General → Project ID** → pegala en el archivo .env.dev en `MINIAPP_SUPABASE_PROJECT_ID` (cadena tipo `abcdefghijk`).
 
 ---
 
