@@ -103,9 +103,11 @@ export const deployMiniapp = async ({
     { name: "core-prod", url: coreProdUrl, anonKey: coreProdAnonKey },
   ];
 
+  const registerFailures: string[] = [];
+
   for (const core of cores) {
     if (!core.url || !core.anonKey) {
-      console.warn(`Skipping ${core.name}: missing URL or anon key`);
+      registerFailures.push(`${core.name}: missing URL or anon key`);
       continue;
     }
 
@@ -131,11 +133,29 @@ export const deployMiniapp = async ({
 
       if (!response.ok) {
         const text = await response.text();
-        console.error(`Failed to register with ${core.name}: ${text}`);
+        registerFailures.push(`${core.name}: HTTP ${response.status} ${text}`);
       }
     } catch (err) {
-      console.error(`Error calling ${core.name}:`, err);
+      registerFailures.push(
+        `${core.name}: ${err instanceof Error ? err.message : String(err)}`
+      );
     }
+  }
+
+  // Fail the deploy if registration with any core failed. The HTML is already
+  // in storage, but a green deploy that didn't update the core DB is a silent
+  // failure — surface it so the CI job fails.
+  if (registerFailures.length > 0) {
+    return {
+      data: null,
+      error: response500_internal_server_error(
+        new Error(
+          `Uploaded to storage but failed to register version with core(s): ${registerFailures.join(
+            "; "
+          )}`
+        )
+      ),
+    };
   }
 
   return {
