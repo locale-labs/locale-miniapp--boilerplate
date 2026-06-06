@@ -207,18 +207,29 @@ El script:
 - Genera keypairs ES256 (dev + prod) en `locale-core/.keys/<slug>-private-{dev,prod}.pem`
 - Genera UUIDs para los `kid` y los guarda en `.keys/<slug>-{dev,prod}.kid`
 - Inserta la fila en el Supabase DEV del core
+- **Encripta las private keys (AES-256-GCM con `KEYPAIR_MASTER_KEY`) y las guarda
+  en las columnas `es256_*` de la fila.** El core las lee y descifra al firmar
+  tokens → **no hay Fly secrets por-miniapp ni redeploy del core**.
 - Si pasaste los flags de Supabase, hace PATCH y deja `supabase_url_dev` /
-  `supabase_anon_key_dev` poblados en esa fila (idempotente — corre la
-  PATCH tanto si la fila se acaba de insertar como si ya existía)
-- Imprime los comandos exactos para los pasos siguientes
+  `supabase_anon_key_dev` poblados en esa fila (idempotente)
+- Imprime los pasos siguientes (upsert prod + import JWK)
 
-### 6.2 Cargar secrets a Fly + redeploy core
+> Requiere `KEYPAIR_MASTER_KEY` (la master key global, base64 32 bytes) accesible
+> al script: en `locale-core/app/.env`, como env var, o en
+> `locale-core/.keys/KEYPAIR_MASTER_KEY.txt`. Tiene que ser el **mismo** valor que
+> el Fly secret `KEYPAIR_MASTER_KEY` de `locale-core-dev` y `locale-core`
+> (se setea una sola vez para todo el ecosistema, no por miniapp).
 
-Copiar y ejecutar los comandos `fly secrets set ...` que imprimió el script.
+### 6.2 ~~Cargar secrets a Fly~~ — ya no aplica
 
-### 6.3 Insertar fila en Supabase PROD del core
+Las keys viven cifradas en la DB. **No** hay que setear `fly secrets` por-miniapp ni
+redeployar el core. Lo único en Fly es el `KEYPAIR_MASTER_KEY` global (una vez).
 
-El script imprime un `INSERT INTO public.miniapps ...`. Pegarlo en el SQL Editor del Supabase **prod** del core (uno solo, no de cada miniapp).
+### 6.3 Upsert fila en Supabase PROD del core
+
+El script imprime un `INSERT ... ON CONFLICT (slug) DO UPDATE ...` que ya incluye
+las columnas `es256_*` (con los enc blobs — ciphertext, seguro de pegar). Pegarlo en
+el SQL Editor del Supabase **prod** del core (uno solo, no de cada miniapp).
 
 ### 6.4 Importar JWK del kernel al Supabase del miniapp (dev + prod)
 
