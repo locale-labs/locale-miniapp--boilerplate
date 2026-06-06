@@ -22,7 +22,7 @@ gh pr merge <pr> --merge   # NO squash (semantic-release necesita los commits)
 # 3.1. Esperar a que termine la action del merge (bloquea hasta que termine,
 # sale != 0 si falla). El sleep da tiempo a que el run se registre.
 sleep 5 && gh run watch --repo locale-labs/locale-miniapp--boilerplate --exit-status \
-  "$(gh run list --repo locale-labs/locale-miniapp--boilerplate --workflow publish.yml --branch main --limit 1 --json databaseId --jq '.[0].databaseId')"
+  "$(gh run list --repo locale-labs/locale-miniapp--boilerplate --workflow release.yml --branch main --limit 1 --json databaseId --jq '.[0].databaseId')"
 
 # 3.2. Sincronizar dev con main
 git checkout main && git pull
