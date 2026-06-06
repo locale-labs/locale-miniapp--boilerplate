@@ -9,6 +9,9 @@ permissions:
 jobs:
   deploy:
     name: Deploy to prod (manual)
+    # Skip on the boilerplate template repo itself (placeholder secrets/IDs).
+    # Runs normally once scaffolded into a real miniapp repo.
+    if: github.event.repository.name != 'locale-miniapp--boilerplate'
     runs-on: ubuntu-latest
     env:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
