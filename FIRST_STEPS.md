@@ -13,10 +13,6 @@ Necesitás tener instalado y configurado:
 - [ ] [**Supabase CLI**](https://supabase.com/docs/guides/local-development/cli/getting-started) (`brew install supabase/tap/supabase` o `bunx supabase --help`)
 Y necesitás acceso a:
 
-- [ ] La **org `locale-labs` en GitHub** (para crear el repo desde el template).
-- [ ] La **org de Locale en Supabase** (para crear los proyectos de DB).
-- [ ] El repo `locale-core` (para registrar tu mini-app con el script). Por ahora solo el equipo core registra mini-apps.
-
 > 💡 Si te falta cualquiera de estos accesos, pedíselo a quien administra Locale **antes** de empezar — varios pasos van a quedar bloqueados sin ellos.
 
 ---
@@ -26,9 +22,8 @@ Y necesitás acceso a:
 1. Abrí en el browser el repo del boilerplate: `https://github.com/locale-labs/locale-miniapp--boilerplate`.
 2. Tocá el botón verde **"Use this template" → "Create a new repository"**.
 3. Configurá:
-   - **Owner**: `locale-labs`
-   - **Repository name**: `locale-miniapp--<id>` — ejemplo: `locale-miniapp--eventos`. La convención es siempre con doble guion.
-   - **Visibility**: lo que corresponda (privado por defecto).
+   - **Repository name**: `locale-miniapp--<id>` — ejemplo: `locale-miniapp--eventos-de-la-zona`. La convención es siempre con doble guion.
+   - **Visibility**: privado.
 4. **Create repository**.
 
 Ahora cloná el repo nuevo:
@@ -170,7 +165,7 @@ SELECT id, name, public FROM storage.buckets WHERE id = 'miniapp-builds';
 
 El core, cuando se abre `dev.locale.com.ar/<slug>?mini-app-dev-mode=true`, llama a la RPC `public.dev_gate_verify(p text)` en el **Supabase del miniapp** para validar la contraseña del gate. Si la RPC no existe el browser ve el form pero al submit el verify revienta (RPC missing).
 
-Correr el SQL de [`init-config/DEV_GATE.md`](./init-config/DEV_GATE.md) contra el Supabase **dev** del miniapp (Dashboard → SQL Editor, o `bunx supabase db query`, o MCP). Crea `dev_gate_config`, la RPC, y hace el INSERT con el password hasheado con bcrypt.
+Correr el SQL de [`NOTES/init-config/DEV_GATE.md`](./NOTES/init-config/DEV_GATE.md) contra el Supabase **dev** del miniapp (Dashboard → SQL Editor, o `bunx supabase db query`, o MCP). Crea `dev_gate_config`, la RPC, y hace el INSERT con el password hasheado con bcrypt.
 
 > ⚠️ **Usá el mismo password que pusiste en `MINIAPP_DEV_PASS` del Paso 3.** bcrypt es one-way: si después perdés el `.env.dev`, no hay forma de leer el hash de la DB — tenés que rotar haciendo otro UPDATE con un password nuevo.
 
@@ -183,80 +178,21 @@ SELECT public.dev_gate_verify('<tu-password>') AS verify_ok;
 
 ---
 
-## Paso 6 — Auth: registro en core + importar JWK al Supabase del miniapp
+## Paso 6 — Auth: registro en el core (lo corre el equipo core)
 
-El kernel firma JWTs con una clave privada ES256 propia de cada mini-app, y el Supabase del miniapp valida la firma contra la pública.
+El kernel firma JWTs con una clave privada ES256 propia de cada mini-app, y el Supabase del miniapp valida la firma contra la pública. Generar ese keypair, guardarlo cifrado en el core, registrar la fila e importar el JWK en tu Supabase lo hace **el equipo core** con un script (`scripts/register-miniapp.ts` en `locale-core`) — un solo comando, sin clicks en el dashboard de JWT.
 
-**Quién hace esto:** quien tenga acceso al repo de `locale-core` (por ahora, el equipo core).
+**Vos (dev de la mini-app):** pedile al equipo core que registre tu slug. Pasale:
 
-### 6.1 Correr el script de registro
+- `slug` y `name` → de `package.json` (`miniApp.id` / `miniApp.name`)
+- `MINIAPP_SUPABASE_URL` + `MINIAPP_SUPABASE_ANON_PUBLIC` → de tu `.env.dev` (dev ahora; los `-prod` cuando tengas el Supabase prod)
+- `MINIAPP_SUPABASE_ACCESS_TOKEN` → de tu `.env.dev`. **Imprescindible** para importar el JWK en tu Supabase: el Supabase de cada mini-app vive en su propia org, y el token del core no puede administrarla (`403`).
 
-Desde la raíz de `locale-core`:
+Cuando el core termina: tu fila queda creada, la signing-key importada y **activa** (current), y los GitHub secrets del repo seteados (si lo pediste). No tenés que tocar `Settings → JWT` a mano.
 
-> reemplazar "packageJson.miniApp.id" con el valor actual que se encuentra en el archivo package.json y los $MINIAPP_SUPABASE_URL con los valores que estan en los archivos .env
+> 💡 Si más adelante ves `401 Unauthorized` al crear ítems: el `kid` del JWT que firma el kernel debe matchear el `kid` del JWK activo en tu Supabase, y el JWK debe estar como **current** (no standby). Diagnóstico en Troubleshooting.
 
-```bash
-bun run scripts/register-miniapp.ts \
-  --slug <packageJson.miniApp.id> \
-  --name "<packageJson.miniApp.name>" \
-  --supabase-url-dev "$MINIAPP_SUPABASE_URL" \
-  --supabase-anon-key-dev "$MINIAPP_SUPABASE_ANON_PUBLIC"
-```
-
-El script:
-- Genera keypairs ES256 (dev + prod) en `locale-core/.keys/<slug>-private-{dev,prod}.pem`
-- Genera UUIDs para los `kid` y los guarda en `.keys/<slug>-{dev,prod}.kid`
-- Inserta la fila en el Supabase DEV del core
-- **Encripta las private keys (AES-256-GCM con `KEYPAIR_MASTER_KEY`) y las guarda
-  en las columnas `es256_*` de la fila.** El core las lee y descifra al firmar
-  tokens → **no hay Fly secrets por-miniapp ni redeploy del core**.
-- Si pasaste los flags de Supabase, hace PATCH y deja `supabase_url_dev` /
-  `supabase_anon_key_dev` poblados en esa fila (idempotente)
-- Imprime los pasos siguientes (upsert prod + import JWK)
-
-> Requiere `KEYPAIR_MASTER_KEY` (la master key global, base64 32 bytes) accesible
-> al script: en `locale-core/app/.env`, como env var, o en
-> `locale-core/.keys/KEYPAIR_MASTER_KEY.txt`. Tiene que ser el **mismo** valor que
-> el Fly secret `KEYPAIR_MASTER_KEY` de `locale-core-dev` y `locale-core`
-> (se setea una sola vez para todo el ecosistema, no por miniapp).
-
-### 6.2 ~~Cargar secrets a Fly~~ — ya no aplica
-
-Las keys viven cifradas en la DB. **No** hay que setear `fly secrets` por-miniapp ni
-redeployar el core. Lo único en Fly es el `KEYPAIR_MASTER_KEY` global (una vez).
-
-### 6.3 Upsert fila en Supabase PROD del core
-
-El script imprime un `INSERT ... ON CONFLICT (slug) DO UPDATE ...` que ya incluye
-las columnas `es256_*` (con los enc blobs — ciphertext, seguro de pegar). Pegarlo en
-el SQL Editor del Supabase **prod** del core (uno solo, no de cada miniapp).
-
-### 6.4 Importar JWK del kernel al Supabase del miniapp (dev + prod)
-
-⚠️ **Importante:** este paso cambió respecto a guías viejas. Lo que está hoy en Supabase:
-
-- **Path UI:** `Settings → JWT` (no `Settings → API → JWT Keys` — Supabase movió la UI). URL directa: `https://supabase.com/dashboard/project/<ref>/settings/jwt`.
-- **Botón:** `Create Standby Key` → `Import`.
-- **Formato:** UI **sólo acepta JSON (JWK)**, no PEM. Un JWK public-only (`kty, crv, kid, x, y`) **falla** con "required properties missing". Hay que importar el **JWK privado completo** (incluye campo `d`).
-- **Status:** queda como standby. Hay que promoverlo a **current** para que valide tokens entrantes.
-
-#### Generar el JWK privado desde la PEM
-
-Desde la raíz de `locale-core`, para cada entorno (dev y prod), corré el script que lo genera y copiá el JSON que imprime.
-
-#### Importarlo en Supabase
-
-1. Abrí `https://supabase.com/dashboard/project/<MINIAPP_SUPABASE_PROJECT_ID>/settings/jwt`
-2. `Create Standby Key` → `Import`
-3. Pegá el JSON entero (incluye `d`)
-4. Confirmar import — debe aparecer como **Standby**
-5. Promover **Standby → Current** (botón "Use this key" / "Rotate")
-
-A partir de acá, cuando un usuario haga una request al Supabase del miniapp con el JWT del kernel, Supabase valida la firma contra la public key republicada en su propio JWKS y resuelve `auth.uid() = sub` correctamente — habilitando RLS.
-
-> ⚠️ **NO es JWKS URL.** Supabase NO fetchea ningún endpoint externo. La validación va contra el JWK que importaste. Si una guía vieja menciona "JWKS URL" como opción, está desactualizada.
-
-> 💡 Si más adelante ves errores `401 Unauthorized` al crear ítems, verificá que: (a) el `kid` del header del JWT que firma el kernel matchea el `kid` del JWK que importaste, (b) el JWK fue promovido de Standby a Current, (c) la private en el JWK corresponde a la que está en `<SLUG>_ES256_DEV_PRIVATE_KEY` de Fly (mismo material, no es otro keypair).
+> 🔧 **Equipo core:** el detalle completo (flags, flujo dev→prod, gh secrets, cómo funciona el import del JWK, troubleshooting) vive en [`locale-core/NOTES/REGISTER_MINIAPP.md`](../locale-core/NOTES/REGISTER_MINIAPP.md), al lado del script.
 
 ---
 
@@ -354,9 +290,9 @@ Deberías ver:
 
 1. **Repetí Paso 4** creando un segundo proyecto Supabase (`locale-miniapp--<id>` con sufijo `-prod` si querés diferenciarlo).
 2. Aplicá las migrations al proyecto prod (Paso 5 con el nuevo project_ref).
-3. Importá el JWK **prod** en el Supabase de prod (Paso 6.4 — generar JWK con `ENV=prod` y `KID=$(cat .keys/<slug>-prod.kid)`, después import en `Settings → JWT` del Supabase prod del miniapp, promover Standby → Current).
+3. Pedile al equipo core que **re-corra el registro con los flags `-prod`** (`--supabase-url-prod` / `--supabase-anon-key-prod`, más `--miniapp-access-token`). En una sola corrida importa y activa el JWK **prod** en tu Supabase prod y crea la fila CORE-PROD — sin tocar `Settings → JWT` ni SQL a mano. Ver Paso 6.
 4. Cargá los secrets `PROD_MINIAPP_*` en GitHub (Paso 8).
-5. Verificá que el admin del core haya corrido el SQL de insert en Supabase PROD (se lo imprime el script del Paso 6).
+5. Confirmá con el core que el re-registro prod (punto 3) terminó OK.
 6. Mergeá `dev → main` con un PR (NO uses squash — semantic-release necesita los commits originales):
    ```bash
    gh pr create --base main --head dev --title "release: initial deploy"
@@ -375,7 +311,7 @@ Deberías ver:
 | "Invitado" en lugar de mi email | El kernel no devolvió un user válido. Probaste sin `?mini-app-dev-mode=true`? |
 | `401 Unauthorized` al crear ítem (`PGRST301` "No suitable key was found to decode the JWT") | El JWT no está pasando RLS. Diagnóstico rápido: DevTools → Network → `sign-token` → Response → copiar `token`. Decodificá el header con `node -e "console.log(JSON.parse(Buffer.from('<TOKEN>'.split('.')[0],'base64')))"` y comparalo contra `curl -s https://<miniapp-ref>.supabase.co/auth/v1/.well-known/jwks.json \| jq '.keys[].kid'`. Si los `kid` no matchean → Fly desyncado del `.keys/` local; fix re-importando desde el PEM canónico (ver `<workspace>/NOTES/LEARNINGS.md → Fly secrets vs .keys/ desync`). Si matchean: (a) verificá que el JWK importado en Supabase fue promovido de Standby a Current, (b) la private del JWK matchea `<SLUG>_ES256_DEV_PRIVATE_KEY` de Fly (mismo material). |
 | `404` cuando abro `/locale.com.ar/<id>` | El core no registró la ruta. Causas comunes: (a) la fila no existe en `miniapps`; (b) deploy llegó OK pero `dev_version`/`dev_url` quedaron NULL por mismatch de `MINIAPP_DEPLOY_SECRET`; (c) core viejo (anterior a mayo 2026) que skipea rutas si `url` (prod) está NULL aunque `dev_url` esté poblado — actualizar core. |
-| Dev gate dice `"El gate no está configurado en el Supabase dev de la mini-app"` | `supabase_url_dev` o `supabase_anon_key_dev` está NULL en la fila del core. Re-correr `register-miniapp.ts` con `--supabase-url-dev` / `--supabase-anon-key-dev`, o correr la UPDATE manual del Paso 6.1. |
+| Dev gate dice `"El gate no está configurado en el Supabase dev de la mini-app"` | `supabase_url_dev` o `supabase_anon_key_dev` está NULL en la fila del core. Pedile al core que re-corra `register-miniapp.ts` con `--supabase-url-dev` / `--supabase-anon-key-dev`. |
 | Dev gate dice `"No se pudo verificar contra Supabase"` o submit del password tira error | Falta correr el SQL del Paso 5.2 contra el Supabase dev del miniapp — no existe la RPC `dev_gate_verify` ni la tabla `dev_gate_config`. |
 | El password del dev-gate "no funciona" y no me acuerdo cuál puse | bcrypt es one-way, no se recupera. Si lo guardaste en `.env.dev` como `MINIAPP_DEV_PASS` (Paso 3), está ahí. Si no, rotalo: re-correr el INSERT/UPDATE del Paso 5.2 con un password nuevo, anotalo en `.env.dev` esta vez. |
 | El modal del kernel no muestra la versión | El edge function `deploy_miniapp` falló. Mirá `bunx supabase functions logs deploy_miniapp`. |
