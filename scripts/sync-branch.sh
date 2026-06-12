@@ -16,6 +16,8 @@
 #
 # Flags:
 #   --no-fetch   no hace git fetch (usa el estado local cacheado)
+#   --auto|-a    muestra el audit y pregunta UNA sola vez; si confirmás, corre
+#                todos los pasos sin volver a preguntar
 #   --yes|-y     no pregunta confirmación antes de cada acción (PELIGROSO)
 #   -h|--help    esta ayuda
 #
@@ -24,7 +26,8 @@
 #                       sincroniza dev←main
 #   ahead==0,behind>0 → solo sincroniza dev←main
 #
-# Pasos que tocan el remoto (push / merge de PR) preguntan y/N salvo --yes.
+# Pasos que tocan el remoto (push / merge de PR) preguntan [Y/n] (default Y)
+# salvo --yes. Con --auto se confirma una vez y corre todo solo.
 
 set -uo pipefail
 
@@ -44,14 +47,16 @@ fi
 DO_DEPLOY=0
 DO_FETCH=1
 ASSUME_YES=0
+AUTO_AFTER_AUDIT=0
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --deploy)   DO_DEPLOY=1 ;;
     --no-fetch) DO_FETCH=0 ;;
+    --auto|-a)  AUTO_AFTER_AUDIT=1; DO_DEPLOY=1 ;;
     --yes|-y)   ASSUME_YES=1 ;;
     -h|--help)
-      sed -n '2,28p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+      sed -n '2,30p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
       exit 0 ;;
     -*) echo "${RED}flag desconocida: $1${RST}" >&2; exit 2 ;;
     *)  echo "${RED}argumento inesperado: $1${RST}" >&2; exit 2 ;;
@@ -69,8 +74,9 @@ confirm() {
   # drenar input pendiente: `gh run watch`/`gh pr merge` dejan bytes
   # buffereados en la tty que sino se comen este prompt.
   read -r -t 0.1 -N 100000 _ </dev/tty 2>/dev/null || true
-  read -r -p "${YEL}? $1 [y/N] ${RST}" ans </dev/tty
-  [[ "$ans" == "y" || "$ans" == "Y" ]]
+  read -r -p "${YEL}? $1 [Y/n] ${RST}" ans </dev/tty
+  # default Y: vacío (Enter) o y/Y → sí; solo n/N → no
+  [[ "$ans" != "n" && "$ans" != "N" ]]
 }
 
 # git en este repo sin cd
@@ -233,6 +239,18 @@ fi
 if [[ $DO_DEPLOY -eq 0 ]]; then
   echo "${DIM}Correr con --deploy para ejecutar los pasos (interactivo).${RST}"
   exit 0
+fi
+
+# --auto: una sola confirmación tras ver el audit; luego no pregunta más.
+if [[ $AUTO_AFTER_AUDIT -eq 1 && $ASSUME_YES -eq 0 ]]; then
+  if confirm "ejecutar TODOS los pasos de deploy sin volver a preguntar?"; then
+    ASSUME_YES=1
+    echo "${DIM}modo auto: corriendo todos los pasos sin más prompts${RST}"
+    echo
+  else
+    echo "${DIM}cancelado${RST}"
+    exit 0
+  fi
 fi
 
 SLUG="$(remote_slug)"
