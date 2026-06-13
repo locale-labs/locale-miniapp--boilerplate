@@ -213,30 +213,79 @@ Para probar **todo el flujo end-to-end** necesitás deployar a `dev` y abrirla d
 
 ## Paso 8 — Configurar GitHub Secrets
 
-Antes del primer push, agregá los secrets en **Settings → Secrets and variables → Actions** del repo:
+Antes del primer push, agregá los secrets en **Settings → Secrets and variables → Actions** del repo.
 
-> 💡 `gh secret set DEV_MINIAPP_SUPABASE_URL --body "xx_secret"` desde la terminal te ahorra ir al browser. `gh secret list` para ver lo que ya cargaste.
+> 💡 `gh secret set DEV_MINIAPP_SUPABASE_URL --body "xx_secret"` desde la terminal te ahorra ir al browser. `gh secret list` para ver lo que ya cargaste. Más abajo hay un script que setea los 12 de una pasada.
+
+> 🔴 **OJO con el nombre de las `CORE_*`.** El nombre en `.env.dev.example` **no** coincide con el del secret: el orden de palabras está swapeado (solo en las `CORE_*`, las `MINIAPP_*` están bien). Los workflows leen la forma `CORE_{ENV}_SUPABASE_*`; el `.env` usa `CORE_SUPABASE_{ENV}_*`. Si seteás el secret copiando el nombre del `.env`, ningún workflow lo lee → el core no resuelve y el **deploy falla silencioso** (sin error claro). Mapeo:
+>
+> | Nombre en `.env.dev.example` | Nombre del GitHub Secret (lo que hay que setear) |
+> |---|---|
+> | `CORE_SUPABASE_DEV_URL` | `CORE_DEV_SUPABASE_URL` |
+> | `CORE_SUPABASE_DEV_ANON_PUBLIC` | `CORE_DEV_SUPABASE_ANON_PUBLIC` |
+> | `CORE_SUPABASE_PROD_URL` | `CORE_PROD_SUPABASE_URL` |
+> | `CORE_SUPABASE_PROD_ANON_PUBLIC` | `CORE_PROD_SUPABASE_ANON_PUBLIC` |
+
+### 8.1 — Setear ahora (los 12 que necesita el primer deploy a `dev`)
 
 | Secret | De dónde sale |
 |---|---|
-| `DEV_MINIAPP_SUPABASE_URL` | Mismo valor que `.env.dev` |
-| `DEV_MINIAPP_SUPABASE_ANON_PUBLIC` | " |
-| `DEV_MINIAPP_SUPABASE_PROJECT_ID` | " |
-| `DEV_MINIAPP_DEPLOY_SECRET` | " |
-| `DEV_MINIAPP_API_KEY` | " |
-| `DEV_MINIAPP_SUPABASE_ACCESS_TOKEN` | " |
-| `PROD_MINIAPP_SUPABASE_URL` | Mismo valor que `.env.dev` |
+| `DEV_MINIAPP_SUPABASE_URL` | Mismo valor que `.env.dev` (`MINIAPP_SUPABASE_URL`) |
+| `DEV_MINIAPP_SUPABASE_ANON_PUBLIC` | `.env.dev` (`MINIAPP_SUPABASE_ANON_PUBLIC`) |
+| `DEV_MINIAPP_SUPABASE_PROJECT_ID` | `.env.dev` (`MINIAPP_SUPABASE_PROJECT_ID`) |
+| `DEV_MINIAPP_DEPLOY_SECRET` | `.env.dev` (`MINIAPP_DEPLOY_SECRET`) |
+| `DEV_MINIAPP_API_KEY` | `.env.dev` (`MINIAPP_API_KEY`) |
+| `DEV_MINIAPP_SUPABASE_ACCESS_TOKEN` | `.env.dev` (`MINIAPP_SUPABASE_ACCESS_TOKEN`) |
+| `CORE_DEV_SUPABASE_URL` | **Ya viene en `.env.dev.example`** (`CORE_SUPABASE_DEV_URL`, valor compartido entre mini-apps). Si falta, pedíselo al admin del core. Ojo el nombre ↑ |
+| `CORE_DEV_SUPABASE_ANON_PUBLIC` | Ya viene en `.env.dev.example` (`CORE_SUPABASE_DEV_ANON_PUBLIC`). Ojo el nombre ↑ |
+| `CORE_PROD_SUPABASE_URL` | Ya viene en `.env.dev.example` (`CORE_SUPABASE_PROD_URL`). Ojo el nombre ↑ |
+| `CORE_PROD_SUPABASE_ANON_PUBLIC` | Ya viene en `.env.dev.example` (`CORE_SUPABASE_PROD_ANON_PUBLIC`). Ojo el nombre ↑ |
+| `MINIAPP_SLUG` | El slug de tu mini-app (`packageJson.miniApp.id`) |
+| `MINIAPP_NAME` | Nombre visible (`packageJson.miniApp.name`) |
+
+> 💡 Las 4 `CORE_*` ya vienen **pre-llenadas y commiteadas** en `.env.dev.example`, así que después del `cp` del Paso 3 ya las tenés en tu `.env.dev`. No hace falta pedírselas a nadie salvo que falten.
+
+#### Script copy-paste (setea los 12 de una pasada)
+
+Corré desde la raíz del repo del miniapp, con `.env.dev` ya completo:
+
+```bash
+# Setea los 12 secrets que se necesitan para el primer deploy a dev.
+set -euo pipefail
+set -a; source .env.dev; set +a
+
+gh secret set DEV_MINIAPP_SUPABASE_URL            --body "$MINIAPP_SUPABASE_URL"
+gh secret set DEV_MINIAPP_SUPABASE_ANON_PUBLIC    --body "$MINIAPP_SUPABASE_ANON_PUBLIC"
+gh secret set DEV_MINIAPP_SUPABASE_PROJECT_ID     --body "$MINIAPP_SUPABASE_PROJECT_ID"
+gh secret set DEV_MINIAPP_DEPLOY_SECRET           --body "$MINIAPP_DEPLOY_SECRET"
+gh secret set DEV_MINIAPP_API_KEY                 --body "$MINIAPP_API_KEY"
+gh secret set DEV_MINIAPP_SUPABASE_ACCESS_TOKEN   --body "$MINIAPP_SUPABASE_ACCESS_TOKEN"
+
+# CORE_* — el nombre del secret está swapeado respecto del .env (ver tabla de mapeo arriba).
+gh secret set CORE_DEV_SUPABASE_URL               --body "$CORE_SUPABASE_DEV_URL"
+gh secret set CORE_DEV_SUPABASE_ANON_PUBLIC       --body "$CORE_SUPABASE_DEV_ANON_PUBLIC"
+gh secret set CORE_PROD_SUPABASE_URL              --body "$CORE_SUPABASE_PROD_URL"
+gh secret set CORE_PROD_SUPABASE_ANON_PUBLIC      --body "$CORE_SUPABASE_PROD_ANON_PUBLIC"
+
+# Slug / name vienen de package.json (miniApp.id / miniApp.name)
+gh secret set MINIAPP_SLUG --body "$(bun -e 'console.log(require(\"./package.json\").miniApp.id)')"
+gh secret set MINIAPP_NAME --body "$(bun -e 'console.log(require(\"./package.json\").miniApp.name)')"
+
+gh secret list
+```
+
+### 8.2 — Diferir a Paso 11 (los 6 `PROD_MINIAPP_*`)
+
+| Secret | De dónde sale |
+|---|---|
+| `PROD_MINIAPP_SUPABASE_URL` | Del proyecto Supabase **prod** (se crea en el Paso 11) |
 | `PROD_MINIAPP_SUPABASE_ANON_PUBLIC` | " |
 | `PROD_MINIAPP_SUPABASE_PROJECT_ID` | " |
 | `PROD_MINIAPP_DEPLOY_SECRET` | " |
 | `PROD_MINIAPP_API_KEY` | " |
 | `PROD_MINIAPP_SUPABASE_ACCESS_TOKEN` | " |
-| `CORE_DEV_SUPABASE_URL` | Te lo da el admin del core (compartido entre mini-apps) |
-| `CORE_DEV_SUPABASE_ANON_PUBLIC` | " |
-| `CORE_PROD_SUPABASE_URL` | " |
-| `CORE_PROD_SUPABASE_ANON_PUBLIC` | " |
-| `MINIAPP_SLUG` | El slug de tu mini-app (packageJson.miniApp.id) |
-| `MINIAPP_NAME` | Nombre visible (packageJson.miniApp.name) |
+
+> ⏳ Estos requieren el proyecto Supabase de prod, que recién se crea en el **Paso 11**. Para el primer deploy a `dev` **no hacen falta** — los cargás cuando promuevas a producción.
 
 ---
 
@@ -291,7 +340,7 @@ Deberías ver:
 1. **Repetí Paso 4** creando un segundo proyecto Supabase (`locale-miniapp--<id>` con sufijo `-prod` si querés diferenciarlo).
 2. Aplicá las migrations al proyecto prod (Paso 5 con el nuevo project_ref).
 3. Pedile al equipo core que **re-corra el registro con los flags `-prod`** (`--supabase-url-prod` / `--supabase-anon-key-prod`, más `--miniapp-access-token`). En una sola corrida importa y activa el JWK **prod** en tu Supabase prod y crea la fila CORE-PROD — sin tocar `Settings → JWT` ni SQL a mano. Ver Paso 6.
-4. Cargá los secrets `PROD_MINIAPP_*` en GitHub (Paso 8).
+4. Cargá los 6 secrets `PROD_MINIAPP_*` en GitHub (Paso 8.2).
 5. Confirmá con el core que el re-registro prod (punto 3) terminó OK.
 6. Mergeá `dev → main` con un PR (NO uses squash — semantic-release necesita los commits originales):
    ```bash
