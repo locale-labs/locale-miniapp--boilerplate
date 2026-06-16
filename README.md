@@ -71,6 +71,20 @@ bun run dev          # html watch + esbuild + tailwind
 bun run dev:local    # apunta al SDK linkeado en ../locale-miniapp-sdk/dist/sdk.js
 ```
 
+## Probar local sin deployar (Local Preview)
+
+Para iterar sin esperar un deploy, podés correr tu `build/index.html` local dentro
+de Localé real (prod):
+
+1. Dejá corriendo `bun run dev` (regenera `build/index.html` en cada guardado).
+2. Logueado con un email habilitado, abrí **`https://locale.com.ar/miniapp-preview-dev`**.
+3. Elegí tu mini-app y seleccioná tu `build/index.html` (corre contra el backend prod).
+4. Editás → guardás → la preview se recarga sola.
+
+> Requiere navegador con File System Access API (Chrome / Edge) y que tu email esté
+> en la allowlist del Core. Pedí acceso al equipo de Localé. El archivo nunca se sube:
+> lo lee el navegador y lo inyecta en el iframe (sandbox) del slug real.
+
 ## Build & deploy
 
 ```bash
