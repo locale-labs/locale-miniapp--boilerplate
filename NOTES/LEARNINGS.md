@@ -56,6 +56,28 @@ Template para crear miniapps nuevas. Un dev (típicamente externo al core-team) 
 - **Workflows asumen GitHub secrets**: `MINIAPP_SUPABASE_*`, `MINIAPP_API_KEY`, `MINIAPP_DEPLOY_SECRET`, `PROD_*`. Si faltan, los releases fallan en silencio.
 - **Conventional commits obligatorio** (`feat:`, `fix:`, `BREAKING CHANGE:`).
 
+## Miniapp PRIVADA (allowlist de acceso)
+
+> Patrón reutilizable cuando una miniapp **no** es de comunidad: solo usuarios logueados **y aprobados** pueden leer/escribir (vs. el default `select using(true)` = lectura pública con la anon key). Primera implementación de referencia: `locale-miniapp--arqueriaflordeliz` (migración `0008_private_access.sql`).
+
+**Restricción clave:** el JWT que el Core firma para el miniapp **solo trae `sub` (uuid), NO el email** (ver [`../../NOTES/AUTH.md`](../../NOTES/AUTH.md)). El SDK expone `user.email` al cliente JS pero es **autoreportado / no confiable** para RLS. → El ancla de confianza es **`auth.uid()` (uuid)**, no el email. Un allowlist "por email puro" requeriría agregar el claim `email` al token en el Core (fuera del boundary del miniapp).
+
+**Patrón (sin tocar el Core):**
+1. Tabla `access_grants(user_id uuid pk, email text, allowed bool default false, created_at)`. `email` = solo label para que el admin reconozca a la persona; la PK real es el uuid.
+2. RLS de `access_grants`:
+   - select: `using (auth.uid() = user_id)` → el user ve su propio estado.
+   - **sin policy de insert / update / delete** → escribir la tabla es **solo `service_role` (dashboard)**. Ni el dueño de la fila la puede crear/modificar. (En arqueria fue decisión explícita del cliente: el alta la hace solo el admin a mano.)
+3. Helper `public.is_allowed()` `language sql stable security definer set search_path=public` → `exists(grant del caller con allowed=true)`. Necesita ser `security definer` para leerse desde las policies de las otras tablas (el WARN de advisors es esperado; solo devuelve un bool del propio caller).
+4. Todas las tablas de dominio: cambiar `select using(true)` y los write `auth.role()='authenticated'` por `using (public.is_allowed())` / `with check (public.is_allowed())`.
+5. Cliente: al iniciar consulta `rpc/is_allowed`. Si `false` → pantalla "acceso pendiente" que le muestra su **uuid + email** (botón copiar) para pasarle al admin, en vez de cargar la app. **El gate del front es solo UX; la seguridad es el RLS.**
+6. Alta (admin): la persona se loguea 1 vez y pasa su uuid+email; el admin hace `insert into access_grants(user_id,email,allowed) values('<uuid>','...',true)` desde SQL editor (service_role). No hay claim de admin en el JWT → la gestión de admin va siempre por service_role.
+
+   > Variante alternativa (más cómoda, menos estricta): permitir self-insert con `with check (auth.uid()=user_id and allowed=false)` para que el cliente auto-poble la lista de pendientes y el admin solo flipee `allowed=true`. Evita tener que copiar uuids a mano, a costa de que cualquier logueado pueda crear su fila (no aprobada). Elegir según cuánto querés cerrar la tabla.
+
+**Al aplicar en prod:** apenas corre la migración nadie lee nada hasta que el admin cargue los grants (cada persona se loguea 1 vez → te pasa su uuid → la das de alta con `allowed=true`).
+
+**Futuro (allowlist por email puro):** si el Core agrega el claim `email` al token, el RLS se simplifica a `lower(auth.jwt()->>'email') in (select ...)` y se puede pre-autorizar sin que la persona se loguee primero.
+
 ## Release / deploy
 
 - Push a `dev` → workflow `deploy-dev.yml` (sin version bump).
