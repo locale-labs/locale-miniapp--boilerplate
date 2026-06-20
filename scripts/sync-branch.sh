@@ -21,10 +21,11 @@
 #   --yes|-y     no pregunta confirmación antes de cada acción (PELIGROSO)
 #   -h|--help    esta ayuda
 #
-# Pasos (igual que DEPLOY.md 3 → 3.1 → 4):
-#   ahead>0           → crea PR dev→main, mergea, espera la action (release.yml),
-#                       sincroniza dev←main
-#   ahead==0,behind>0 → solo sincroniza dev←main
+# Pasos (los nombres, no números de versión — el bump de semver lo hace
+# semantic-release solo al mergear a main):
+#   ahead>0           → PR dev→main → merge (dispara release) → esperar action
+#                       → sincronizar dev←main
+#   ahead==0,behind>0 → solo sincronizar dev←main
 #
 # Pasos que tocan el remoto (push / merge de PR) preguntan [Y/n] (default Y)
 # salvo --yes. Con --auto se confirma una vez y corre todo solo.
@@ -128,8 +129,8 @@ deploy_repo() {
   fi
 
   if [[ $AHEAD -gt 0 ]]; then
-    # ── PASO 3: promover dev → main ──────────────────────────────────────────
-    echo "${BOLD}  → PASO 3: promover dev→main (${AHEAD} commit(s) ahead)${RST}"
+    # ── PROMOVER: abrir PR dev → main ────────────────────────────────────────
+    echo "${BOLD}  → promover dev→main (${AHEAD} commit(s) ahead)${RST}"
 
     local pr_num
     pr_num="$(gh pr list --repo "$SLUG" --base main --head dev --state open \
@@ -156,8 +157,8 @@ deploy_repo() {
       echo "${DIM}    skip merge${RST}"; return 0
     fi
 
-    # ── PASO 3.1: esperar la action del merge ────────────────────────────────
-    echo "${BOLD}  → PASO 3.1: esperando action (${WF}) en ${SLUG}…${RST}"
+    # ── ESPERAR: la action de release disparada por el merge ─────────────────
+    echo "${BOLD}  → esperando action de release (${WF}) en ${SLUG}…${RST}"
     sleep 5
     local run_id
     run_id="$(gh run list --repo "$SLUG" --workflow "$WF" --branch main \
@@ -173,8 +174,8 @@ deploy_repo() {
     echo "${BOLD}  → solo behind (${BEHIND}); sin promover, voy directo a sincronizar${RST}"
   fi
 
-  # ── PASO 4: sincronizar dev con main ──────────────────────────────────────
-  echo "${BOLD}  → PASO 4: sincronizar dev con main${RST}"
+  # ── SINCRONIZAR: traer dev←main (incluye el chore(release) con el bump) ────
+  echo "${BOLD}  → sincronizar dev←main${RST}"
   if confirm "sincronizar dev←main y pushear dev?"; then
     g fetch origin main dev || die "fetch falló"
     g checkout main || die "checkout main falló"
@@ -220,9 +221,9 @@ state="" ; action="" ; color="$GRN" ; need=0
 if [[ "$AHEAD" -eq 0 && "$BEHIND" -eq 0 ]]; then
   state="✓ in-sync" ; action="—"
 elif [[ "$AHEAD" -gt 0 ]]; then
-  state="↑ ahead"   ; action="promote (3→3.1→4)" ; color="$YEL" ; need=1
+  state="↑ ahead"   ; action="promote: PR→merge→sync" ; color="$YEL" ; need=1
 else
-  state="↓ behind"  ; action="sync (4)" ; color="$BLU" ; need=1
+  state="↓ behind"  ; action="sync: dev←main" ; color="$BLU" ; need=1
 fi
 [[ "$AHEAD" -gt 0 && "$BEHIND" -gt 0 ]] && state="⇅ diverged"
 
