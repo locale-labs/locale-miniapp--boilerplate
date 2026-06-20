@@ -27,6 +27,7 @@ Template para crear nuevas mini-apps de Locale. **No clones esto directo: usá "
 - `supabase/` — `config.toml`, edge function `deploy_miniapp`, `_shared/` con CORS y helpers, migration `0001_init.sql` con tabla `items` + RLS.
 - `.github/workflows/` — `deploy-dev.yml`, `deploy-prod.yml`, `release.yml` (semantic-release).
 - `init-config/DEV_GATE.md` — patrón opcional de password gate para el proyecto Supabase de dev.
+- `NOTES/CONVENTIONS.md` — convenciones y mejoras acumuladas de todas las miniapps. **La IA lo sigue al crear/trabajar miniapps.**
 - `Makefile`, `tsconfig.json`, `tailwind`, `eslint`, `prettier`, `.releaserc.json`, husky hooks, etc.
 
 <!-- TEMPLATE_INIT_END -->
@@ -35,6 +36,7 @@ Template para crear nuevas mini-apps de Locale. **No clones esto directo: usá "
 
 {{MINIAPP_DESCRIPTION}}
 
+> **Agente / convenciones:** [`NOTES/CONVENTIONS.md`](./NOTES/CONVENTIONS.md) — reglas de estructura, utils baseline, buenas prácticas. **Seguir por defecto.**
 > **Agente / contexto técnico:** [`NOTES/LEARNINGS.md`](./NOTES/LEARNINGS.md) — boundaries, gotchas, conexiones con otros repos, release flow.
 > **Setup paso a paso para humanos:** [`FIRST_STEPS.md`](./FIRST_STEPS.md).
 
