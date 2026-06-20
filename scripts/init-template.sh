@@ -80,12 +80,25 @@ fi
 
 # ── Auto-eliminación ────────────────────────────────────────────────────────
 echo
+echo "🧹 Borrando este script (init-template.sh)…"
+rm -- "$0"
+
+# ── Commit inicial + seed tag v0.1.0 (arranca en beta 0.x) ──────────────────
+# semantic-release calcula la próxima versión a partir del último git tag,
+# NO del package.json. Sin un tag previo, el primer release saltaría a 1.0.0.
+# Seedeamos v0.1.0 en el commit de init para que la mini-app nazca en beta y
+# los siguientes releases avancen 0.1.1 / 0.2.0 / … en vez de 1.x.
+echo "📦 Commit inicial + tag v0.1.0 (beta)…"
+git add -A
+git commit -q -m "chore: init from template"
+git tag -a v0.1.0 -m "seed: beta 0.1.0"
+
+echo
 echo "✅ Listo. Próximos pasos:"
 echo "   1. bun install"
 echo "   2. Configurar .env.dev (ver DEPLOY.md y README)"
 echo "   3. bunx supabase link --project-ref <project-ref>"
 echo "   4. bunx supabase db push"
-echo "   5. git add -A && git commit -m 'chore: init from template'"
 echo
-echo "🧹 Borrando este script (init-template.sh)…"
-rm -- "$0"
+echo "ℹ️  Commit inicial + tag v0.1.0 ya hechos (local, sin pushear)."
+echo "    En el primer push incluí los tags:  git push --tags"

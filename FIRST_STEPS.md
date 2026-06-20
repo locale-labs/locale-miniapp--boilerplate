@@ -58,13 +58,9 @@ Cuando termina, el script:
 - Reemplaza todos los placeholders.
 - Borra la sección "Cómo usar este template" del README.
 - **Se elimina a sí mismo**.
+- Hace el commit inicial (`chore: init from template`) y crea el tag **`v0.1.0`** (local, sin pushear).
 
-Hacé un commit con esto:
-
-```bash
-git add -A
-git commit -m "chore: init from template"
-```
+> 🏷️ El tag `v0.1.0` semillea el versionado en **beta (0.x)**. `semantic-release` calcula la próxima versión desde el último git tag, **no** desde `package.json`: sin este seed, el primer release saltaría a `1.0.0`. Con el seed, los releases avanzan `0.1.1` / `0.2.0` / … hasta que decidas pasar a `1.0.0`.
 
 > 🚨 Todavía **no pushees**. Antes hace falta configurar Supabase (Paso 3) para que el primer push a `dev` no falle el workflow de deploy.
 
@@ -291,12 +287,14 @@ gh secret list
 
 ## Paso 9 — Primer deploy a dev
 
-Creá la branch `dev` y pusheala:
+Creá la branch `dev` y pusheala (incluí `--tags` para subir el seed `v0.1.0`):
 
 ```bash
 git checkout -b dev
-git push -u origin dev
+git push -u origin dev --tags
 ```
+
+> 🏷️ Sin `--tags` el seed `v0.1.0` se queda local y el primer release a `main` (Paso 11) saltaría a `1.0.0`. `release.yml` clona con `fetch-depth: 0`, así que necesita el tag en el remoto.
 
 Esto dispara el workflow `deploy-dev.yml`. Mirá el progreso:
 

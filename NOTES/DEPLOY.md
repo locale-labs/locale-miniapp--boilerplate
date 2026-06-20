@@ -5,6 +5,8 @@
 
 La versión que ves en el modal del core sale de `package.json` + el SHA corto del commit deployado. El builder envía ambos al edge function `deploy_miniapp`, que los combina como semver build-metadata (`1.1.0+a1b2c3d`) y el core los re-formatea como `1.1.0 · a1b2c3d`.
 
+> 🏷️ **Versionado beta (0.x).** La mini-app nace en `0.1.0`: `scripts/init-template.sh` crea el tag seed `v0.1.0` en el commit de init. `semantic-release` calcula la próxima versión desde el último git tag, **no** desde `package.json` — sin el seed, el primer release saltaría a `1.0.0`. Con el seed los releases avanzan `0.1.1` (`fix`) / `0.2.0` (`feat`) y se quedan en `0.x` hasta que un cambio breaking (o un bump manual) los lleve a `1.0.0`. El tag tiene que estar en el remoto antes del primer release a `main` (`git push --tags`, Paso 9 del [FIRST_STEPS.md](../FIRST_STEPS.md)).
+
 ## Flujo
 
 ```bash
