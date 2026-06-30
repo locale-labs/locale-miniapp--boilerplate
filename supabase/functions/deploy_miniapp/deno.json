@@ -1,7 +1,4 @@
 {
-  "tasks": {
-    "test": "deno test --allow-all"
-  },
   "imports": {
     "@supabase/supabase-js": "jsr:@supabase/supabase-js@2"
   }

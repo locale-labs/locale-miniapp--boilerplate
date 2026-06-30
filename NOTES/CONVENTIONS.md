@@ -67,7 +67,7 @@ Helpers que probaron ser útiles cross-miniapp. **Idealmente vivir en el boilerp
 - **`utils/num.ts` — `toIntOrNull(v)`.** Normaliza el `''` de `x-model.number` a `int | null`. _(arquería)_
 - **`utils/access.ts` — gate de app PRIVADA via RPC `is_allowed()`.** Solo para apps
   privadas (staff). La seguridad real es el RLS; esto es UX (pantalla "pendiente"). _(arquería)_
-- **`utils/logger.ts` — `logger/logError/logWarn/logTrace`** con flag `MINIAPP_DEBUG`. _(boilerplate)_
+- **`utils/logger.ts` — `logger/logError/logWarn`** con flag `MINIAPP_DEBUG`. _(boilerplate)_
 
 ## 4. UX / SDK
 

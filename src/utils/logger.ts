@@ -28,9 +28,3 @@ export function logError(...args: unknown[]): void {
 export function logWarn(...args: unknown[]): void {
   console.warn('[MiniApp Warning]', ...args);
 }
-
-export function logTrace(...args: unknown[]): void {
-  if (isDebugEnabled()) {
-    console.trace('[MiniApp Trace]', ...args);
-  }
-}
