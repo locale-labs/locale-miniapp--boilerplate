@@ -1,9 +1,12 @@
-import { PostgrestError } from "@supabase/supabase-js";
+// Nota: aca solo se usaba el TYPE `PostgrestError` (union `PostgrestError | unknown`),
+// union que colapsa a `unknown` (sin efecto). La dependencia @supabase/supabase-js
+// SI es real y sigue en uso: client.ts la importa (createClient) y se resuelve via
+// el import map de deno.json (jsr:@supabase/supabase-js@2).
 import { corsHeaders } from "./cors.ts";
 
 const headers = { ...corsHeaders, "Content-Type": "application/json" };
 
-const errorMessageOrUnknownError = (error: PostgrestError | unknown) =>
+const errorMessageOrUnknownError = (error: unknown) =>
   error instanceof Error ? error.message : "Unknown error";
 
 export const response200 = (data: unknown) =>
@@ -12,7 +15,7 @@ export const response200 = (data: unknown) =>
     status: 200,
   });
 
-export const response400_bad_request = (error: PostgrestError | unknown) =>
+export const response400_bad_request = (error: unknown) =>
   new Response(JSON.stringify({ error: errorMessageOrUnknownError(error) }), {
     headers,
     status: 400,
